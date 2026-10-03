@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clinical Data Sentinel - Real-Time Dashboard</title>
+
+<style>
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-tertiary: #eef2f7;
+    --fg-primary: #0f172a;
+    --fg-secondary: #475569;
+    --fg-tertiary: #64748b;
+    --accent: #6366f1;
+    --accent-light: #e0e7ff;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --critical: #ef4444;
+    --border: #e2e8f0;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --fg-primary: #f1f5f9;
+      --fg-secondary: #cbd5e1;
+      --fg-tertiary: #94a3b8;
+      --accent-light: #312e81;
+      --border: #334155;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { height: 100%; }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg-primary);
+    color: var(--fg-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .header {
+    padding: 2rem;
+    background: linear-gradient(135deg, var(--accent) 0%, #5558d9 100%);
+    color: white;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    position: relative;
+  }
+
+  .header h1 { margin: 0 0 0.5rem 0; font-size: 2.2rem; }
+  .header p { margin: 0.25rem 0; opacity: 0.9; }
+
+  .status-indicator {
+    position: absolute;
+    top: 2rem;
+    right: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .main-layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 2rem;
+    margin-bottom: 2rem;
+  }
+
+  .dashboard-section {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .metric-card {
+    background: var(--bg-primary);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--accent);
+    text-align: center;
+  }
+
+  .metric-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .metric-label {
+    font-size: 0.75rem;
+    color: var(--fg-tertiary);
+    text-transform: uppercase;
+    margin-top: 0.25rem;
+  }
+
+  .incidents-list {
+    max-height: 650px;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+  }
+
+  .incident-row {
+    background: var(--bg-primary);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin-bottom: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .incident-row:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+
+  .incident-row.selected {
+    background: var(--accent-light);
+    border: 2px solid var(--accent);
+    padding: calc(1rem - 1px);
+  }
+
+  .incident-row.new {
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .incident-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .incident-subject {
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex: 1;
+  }
+
+  .incident-timestamp {
+    font-size: 0.75rem;
+    color: var(--fg-tertiary);
+    margin-left: 0.5rem;
+    white-space: nowrap;
+  }
+
+  .risk-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .risk-badge.safe {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .risk-badge.review {
+    background: #fef3c7;
+    color: #b45309;
+  }
+
+  .risk-badge.anomalous {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .incident-meta {
+    font-size: 0.8rem;
+    color: var(--fg-tertiary);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .ai-panel {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 2px solid var(--accent);
+    display: flex;
+    flex-direction: column;
+    height: 750px;
+    position: sticky;
+    top: 20px;
+  }
+
+  .ai-panel h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .incident-detail {
+    background: var(--bg-primary);
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+    border-left: 3px solid var(--accent);
+    font-size: 0.85rem;
+  }
+
+  .incident-detail strong {
+    color: var(--fg-primary);
+  }
+
+  .incident-detail span {
+    color: var(--fg-secondary);
+    display: block;
+    word-break: break-all;
+  }
+
+  .chat-box {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow: hidden;
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    min-height: 200px;
+  }
+
+  .message {
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    word-wrap: break-word;
+  }
+
+  .message.user {
+    background: var(--accent);
+    color: white;
+    margin-left: auto;
+    max-width: 90%;
+  }
+
+  .message.assistant {
+    background: var(--bg-tertiary);
+    color: var(--fg-primary);
+    max-width: 90%;
+  }
+
+  .action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .action-btn {
+    padding: 0.5rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .action-btn.approve {
+    background: var(--success);
+    color: white;
+  }
+
+  .action-btn.review {
+    background: var(--warning);
+    color: white;
+  }
+
+  .action-btn.block {
+    background: var(--critical);
+    color: white;
+  }
+
+  .action-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .no-selection {
+    color: var(--fg-tertiary);
+    text-align: center;
+    padding: 2rem 1rem;
+  }
+
+  .loading {
+    text-align: center;
+    padding: 1rem;
+    color: var(--fg-tertiary);
+  }
+
+  .chat-input-area {
+    display: flex;
+    gap: 0.5rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+    margin-top: auto;
+  }
+
+  .chat-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    background: var(--bg-primary);
+    color: var(--fg-primary);
+  }
+
+  .chat-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+  }
+
+  .chat-send {
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  .chat-send:hover {
+    background: #5558d9;
+  }
+
+  .footer {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    text-align: center;
+    border: 1px solid var(--border);
+    color: var(--fg-tertiary);
+    font-size: 0.85rem;
+  }
+
+  .setup-banner {
+    background: var(--warning);
+    color: white;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    text-align: center;
+  }
+
+  @media (max-width: 1024px) {
+    .main-layout {
+      grid-template-columns: 1fr;
+    }
+    .ai-panel {
+      position: relative;
+      top: 0;
+    }
+    .metrics {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .header h1 { font-size: 1.5rem; }
+    .metrics { grid-template-columns: 1fr; }
+    .status-indicator { position: static; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="status-indicator">
+      <div class="status-dot"></div>
+      <span>Live Monitoring Active</span>
+    </div>
+    <h1>🛡️ Clinical Data Sentinel</h1>
+    <p>Real-Time AI-Powered PHI Detection & Compliance Assistant</p>
+    <p>Select an incident → AI Agent provides analysis & recommends actions</p>
+  </div>
+
+  <div id="setupBanner" class="setup-banner" style="display: none;">
+    ⚠️ Setup required: Run <code>npm run test-email</code> to load sample incidents
+  </div>
+
+  <div class="main-layout">
+    <div class="dashboard-section">
+      <h2 style="margin-top: 0;">📧 Captured Incidents</h2>
+
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="metric-value" id="totalCount">0</div>
+          <div class="metric-label">Total Scanned</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="safeCount" style="color: var(--success);">0</div>
+          <div class="metric-label">Safe</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="reviewCount" style="color: var(--warning);">0</div>
+          <div class="metric-label">Review</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="anomCount" style="color: var(--critical);">0</div>
+          <div class="metric-label">Anomalous</div>
+        </div>
+      </div>
+
+      <div class="incidents-list" id="incidentsList">
+        <div class="loading">Loading incidents...</div>
+      </div>
+    </div>
+
+    <div class="ai-panel">
+      <h3>🤖 AI Assistant</h3>
+
+      <div id="incidentDetailsCompact" class="no-selection" style="display: none; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px; margin-bottom: 0.75rem; font-size: 0.8rem;">
+        <strong id="compactSubject">Subject</strong><br>
+        <span id="compactRisk" style="display: inline-block; margin-top: 0.25rem;"></span>
+      </div>
+
+      <div class="chat-box" id="chatBox" style="display: flex;">
+        <div class="chat-messages" id="chatMessages"></div>
+      </div>
+
+      <div class="action-buttons" id="actionButtons" style="display: grid;">
+        <button class="action-btn approve" onclick="submitAction('approve')" id="approveBtn">✓ Approve</button>
+        <button class="action-btn review" onclick="submitAction('review')" id="reviewBtn">⚠ Review</button>
+        <button class="action-btn block" onclick="submitAction('block')" id="blockBtn">✕ Block</button>
+      </div>
+
+      <div class="chat-input-area" id="chatInputArea" style="display: flex;">
+        <input
+          type="text"
+          id="chatInput"
+          class="chat-input"
+          placeholder="Ask about this incident..."
+          onkeypress="if(event.key==='Enter') sendMessage()"
+        >
+        <button class="chat-send" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Clinical Data Sentinel | Real-time PHI Detection & Compliance
+  </div>
+</div>
+
+<script>
+  const API_BASE = 'http://localhost:5000/api';
+  let incidents = [];
+  let selectedIncident = null;
+  let autoRefreshInterval = null;
+
+  // Fetch incidents from API
+  async function loadIncidents() {
+    try {
+      const response = await fetch(`${API_BASE}/incidents`);
+      const data = await response.json();
+      incidents = data;
+      renderIncidents();
+      updateStats();
+    } catch (error) {
+      console.error('Error loading incidents:', error);
+      document.getElementById('setupBanner').style.display = 'block';
+    }
+  }
+
+  // Fetch dashboard stats
+  async function updateStats() {
+    try {
+      const response = await fetch(`${API_BASE}/stats`);
+      const stats = await response.json();
+
+      document.getElementById('totalCount').textContent = stats.total;
+      document.getElementById('safeCount').textContent = stats.safe || 0;
+      document.getElementById('reviewCount').textContent = stats.review || 0;
+      document.getElementById('anomCount').textContent = stats.anomalous || 0;
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  }
+
+  function renderIncidents() {
+    const listEl = document.getElementById('incidentsList');
+
+    if (incidents.length === 0) {
+      listEl.innerHTML = '<div class="no-selection">📭 No incidents captured yet.<br><br>Run: <code style="background: var(--bg-tertiary); padding: 2px 4px; border-radius: 3px;">npm run test-email</code></div>';
+      // Hide chat and actions when no incidents
+      document.getElementById('incidentDetailsCompact').style.display = 'none';
+      document.getElementById('chatBox').style.display = 'none';
+      document.getElementById('actionButtons').style.display = 'none';
+      document.getElementById('chatInputArea').style.display = 'none';
+      return;
+    }
+
+    listEl.innerHTML = incidents.map(inc => {
+      const captured = new Date(inc.captured_at).toLocaleTimeString();
+      return `
+        <div class="incident-row ${selectedIncident?.id === inc.id ? 'selected' : ''}" onclick="selectIncident(${inc.id})">
+          <div class="incident-header">
+            <div class="incident-subject">${escapeHtml(inc.subject)}</div>
+            <span class="risk-badge ${inc.risk_level}">${inc.risk_level.toUpperCase()}</span>
+            <span class="incident-timestamp">${captured}</span>
+          </div>
+          <div class="incident-meta">
+            <span>📧 ${escapeHtml(inc.from_address)}</span>
+            <span>🔐 ${inc.confidence}%</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function selectIncident(id) {
+    selectedIncident = incidents.find(i => i.id === id);
+
+    if (!selectedIncident) return;
+
+    const compactDetails = document.getElementById('incidentDetailsCompact');
+    const chatBox = document.getElementById('chatBox');
+    const actionButtons = document.getElementById('actionButtons');
+
+    // Show compact incident details
+    document.getElementById('compactSubject').textContent = `📧 ${escapeHtml(selectedIncident.subject)}`;
+    const riskColor = selectedIncident.risk_level === 'safe' ? 'success' : selectedIncident.risk_level === 'review' ? 'warning' : 'critical';
+    document.getElementById('compactRisk').innerHTML = `<span class="risk-badge ${selectedIncident.risk_level}" style="font-size: 0.75rem;">${selectedIncident.risk_level.toUpperCase()}</span> | PHI: ${escapeHtml(selectedIncident.phi_types || 'none')}`;
+    compactDetails.style.display = 'block';
+
+    chatBox.style.display = "flex";
+    actionButtons.style.display = "grid";
+    document.getElementById('chatInputArea').style.display = 'flex';
+    document.getElementById('chatMessages').innerHTML = "";
+
+    // Initial AI analysis
+    const analysis = getInitialAnalysis();
+    addMessage("assistant", analysis);
+
+    document.getElementById("chatInput").focus();
+    renderIncidents();
+  }
+
+  function getInitialAnalysis() {
+    const inc = selectedIncident;
+    if (inc.risk_level === "safe") {
+      return `✓ Safe. Email contains ${inc.phi_types || 'standard data'} in proper internal channels. Complies with ${inc.dpdp_article} and ${inc.nabh_standard}. No action required.`;
+    } else if (inc.risk_level === "review") {
+      return `⚠️ Review Required. Detected PHI: ${inc.phi_types} (${inc.confidence}% confidence). Maps to ${inc.dpdp_article}/${inc.nabh_standard}. Recommend reviewing within 24 hours to verify proper authorization and compliance status.`;
+    } else {
+      return `🚨 CRITICAL. Anomalous communication detected. PHI types: ${inc.phi_types}. Confidence: ${inc.confidence}%. Violates ${inc.dpdp_article} and ${inc.nabh_standard}. IMMEDIATE ACTION recommended: Review by compliance officer. Consider blocking until cleared.`;
+    }
+  }
+
+  function addMessage(role, text) {
+    const msgs = document.getElementById('chatMessages');
+    const div = document.createElement("div");
+    div.className = `message ${role}`;
+    div.textContent = text;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    addMessage('user', text);
+    input.value = '';
+
+    setTimeout(() => {
+      const response = getAIResponse(text);
+      addMessage('assistant', response);
+    }, 300);
+  }
+
+  function getAIResponse(question) {
+    const inc = selectedIncident;
+    const q = question.toLowerCase();
+
+    if (q.includes('why') || q.includes('reason') || q.includes('flagged')) {
+      if (inc.risk_level === 'anomalous') {
+        return `Flagged as anomalous because: PHI (${inc.phi_types}) detected going to external recipient. Violates ${inc.dpdp_article} which requires explicit authorization for external transfers. Confidence: ${inc.confidence}% indicates high certainty of PHI presence.`;
+      } else if (inc.risk_level === 'review') {
+        return `Flagged for review: PHI types (${inc.phi_types}) require human verification per ${inc.nabh_standard}. While not immediately dangerous, need to confirm recipient authorization and proper data processing agreements in place.`;
+      }
+      return `Email is safe: PHI handling complies with ${inc.dpdp_article}. Standard internal communication between authorized parties.`;
+    }
+
+    if (q.includes('action') || q.includes('do') || q.includes('recommend') || q.includes('next')) {
+      if (inc.risk_level === 'anomalous') {
+        return `RECOMMENDED: BLOCK immediately. PHI (${inc.phi_types}) with external recipient violates ${inc.dpdp_article}. Should not proceed without compliance team approval. Click "Block" button to quarantine and escalate.`;
+      } else if (inc.risk_level === 'review') {
+        return `RECOMMENDED: REVIEW within 24 hours. Verify recipient is authorized to receive ${inc.phi_types}. Check for proper data processing agreements per ${inc.nabh_standard}. If verified, approve. Otherwise, block.`;
+      }
+      return `RECOMMENDED: APPROVE. Complies with ${inc.dpdp_article} and ${inc.nabh_standard}. Standard safe processing.`;
+    }
+
+    if (q.includes('compliance') || q.includes('standard') || q.includes('dpdp') || q.includes('nabh')) {
+      return `This incident maps to ${inc.dpdp_article} and ${inc.nabh_standard}. These standards govern PHI protection, individual rights, and data processing. The compliance framework requires authorization verification before any PHI transfer, especially to external parties.`;
+    }
+
+    return `I can help analyze this incident. PHI: ${inc.phi_types}, Risk: ${inc.risk_level.toUpperCase()}, Confidence: ${inc.confidence}%. What aspect would you like to explore—reasons for flagging, recommended actions, or compliance requirements?`;
+  }
+
+  async function submitAction(action) {
+    const inc = selectedIncident;
+    const buttons = document.querySelectorAll('.action-btn');
+    buttons.forEach(b => b.disabled = true);
+
+    try {
+      const response = await fetch(`${API_BASE}/incidents/${inc.id}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          reason: `Action submitted by admin at ${new Date().toISOString()}`
+        })
+      });
+
+      const result = await response.json();
+
+      if (action === 'approve') {
+        addMessage('assistant', `✓ Approved. Email cleared for processing per ${inc.dpdp_article}. Logged and archived.`);
+      } else if (action === 'review') {
+        addMessage('assistant', `⏳ Marked for review. Compliance team will examine within 24 hours. PHI: ${inc.phi_types}. Reference: ${inc.nabh_standard}.`);
+      } else if (action === 'block') {
+        addMessage('assistant', `✕ Blocked. Email quarantined. Requires compliance officer approval before proceeding. Risk level: ${inc.risk_level.toUpperCase()}.`);
+      }
+
+      selectedIncident.status = action;
+      loadIncidents();
+    } catch (error) {
+      addMessage('assistant', `Error submitting action: ${error.message}`);
+    } finally {
+      buttons.forEach(b => b.disabled = false);
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  // Auto-refresh every 5 seconds
+  function startAutoRefresh() {
+    autoRefreshInterval = setInterval(() => {
+      loadIncidents();
+      updateStats();
+    }, 5000);
+  }
+
+  // Initialize
+  loadIncidents();
+  startAutoRefresh();
+
+  // Stop refresh on page unload
+  window.addEventListener('beforeunload', () => {
+    if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+  });
+</script>
+
+</body>
+</html>
