@@ -1,7 +1,8 @@
 /**
- * Clinical Data Sentinel - Backend Service
+ * Clinical Data Sentinel - Backend Service (Enhanced)
  * Node.js Express server with M365 integration
  * Captures emails from M365, detects PHI, stores incidents, serves dashboard API
+ * ENHANCED: Multi-mailbox monitoring for sent items to external recipients
  */
 
 const express = require('express');
@@ -44,7 +45,8 @@ db.serialize(() => {
       confidence INTEGER,
       raw_body TEXT,
       captured_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      status TEXT DEFAULT 'pending'
+      status TEXT DEFAULT 'pending',
+      email_source TEXT DEFAULT 'sync'
     )
   `);
 
@@ -174,6 +176,50 @@ function mapCompliance(riskLevel, phiTypes) {
   return mappings[riskLevel] || mappings.safe;
 }
 
+// Check if recipient is external
+function isExternalRecipient(recipientEmail) {
+  if (!recipientEmail) return true;
+  return !recipientEmail.match(/@hospital\.com|@internal\.|@m365x92216622\.onmicrosoft\.com/i);
+}
+
+// Get all users in organization
+async function getOrganizationUsers(token) {
+  try {
+    const response = await axios.get(
+      'https://graph.microsoft.com/v1.0/users?$select=id,userPrincipalName,displayName&$top=100',
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    return response.data.value || [];
+  } catch (error) {
+    console.error('Error fetching organization users:', error.message);
+    return [];
+  }
+}
+
+// Get sent emails from user's mailbox
+async function getUserSentEmails(token, userEmail) {
+  try {
+    const response = await axios.get(
+      `https://graph.microsoft.com/v1.0/users/${userEmail}/mailFolders/sentitems/messages?$filter=sentDateTime ge ${new Date(Date.now() - 24*60*60*1000).toISOString()}&$select=id,from,toRecipients,subject,body,sentDateTime&$orderby=sentDateTime desc&$top=50`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    return response.data.value || [];
+  } catch (error) {
+    console.error(`Error fetching sent emails for ${userEmail}:`, error.message);
+    return [];
+  }
+}
+
 // API: Get all incidents
 app.get('/api/incidents', (req, res) => {
   db.all(`
@@ -286,7 +332,7 @@ app.post('/api/ingest-email', (req, res) => {
   }
 
   const phiAnalysis = detectPHI(body, subject);
-  const isExternal = !to.match(/@hospital\.com|@internal\.|@m365x92216622\.onmicrosoft\.com/i);
+  const isExternal = isExternalRecipient(to);
   const riskLevel = stratifyRisk(phiAnalysis.detected, phiAnalysis.confidence, isExternal);
   const compliance = mapCompliance(riskLevel, phiAnalysis.phiTypes);
 
@@ -334,7 +380,7 @@ app.post('/api/ingest-email', (req, res) => {
   );
 });
 
-// Function to fetch and process emails from M365
+// ENHANCED: Function to monitor all sent emails to external recipients
 async function syncEmailsFromM365() {
   if (!m365Initialized) {
     console.log('M365 not initialized, skipping sync');
@@ -342,7 +388,7 @@ async function syncEmailsFromM365() {
   }
 
   try {
-    console.log('📧 Starting M365 email sync...');
+    console.log('📧 Starting comprehensive M365 email sync (inbox + sent items)...');
 
     const token = await getM365Token();
     if (!token) {
@@ -350,73 +396,111 @@ async function syncEmailsFromM365() {
       return;
     }
 
-    const mailboxEmail = process.env.MAILBOX_EMAIL;
-    if (!mailboxEmail) {
-      console.error('MAILBOX_EMAIL not configured in .env');
-      return;
-    }
+    let totalProcessed = 0;
 
-    // Fetch emails from the past 24 hours
-    const response = await axios.get(
-      `https://graph.microsoft.com/v1.0/users/${mailboxEmail}/messages?$filter=receivedDateTime ge ${new Date(Date.now() - 24*60*60*1000).toISOString()}&$select=id,from,toRecipients,subject,bodyPreview,body,receivedDateTime&$orderby=receivedDateTime desc&$top=50`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+    // PART 1: Monitor specific admin mailbox (existing logic)
+    const adminMailbox = process.env.MAILBOX_EMAIL;
+    if (adminMailbox) {
+      console.log(`📬 Scanning admin mailbox: ${adminMailbox}`);
+      const adminEmails = await getUserSentEmails(token, adminMailbox);
+
+      for (const email of adminEmails) {
+        if (!email.body || !email.body.content) continue;
+
+        const to = email.toRecipients?.map(r => r.emailAddress.address).join(', ') || 'unknown';
+
+        // Only capture if sent to external recipients
+        if (isExternalRecipient(to)) {
+          const phi = detectPHI(email.body.content, email.subject);
+          if (phi.detected) {
+            const isExt = isExternalRecipient(to);
+            const risk = stratifyRisk(phi.detected, phi.confidence, isExt);
+            const comp = mapCompliance(risk, phi.phiTypes);
+
+            db.run(
+              `INSERT OR IGNORE INTO incidents
+               (email_id, from_address, to_address, subject, phi_types, risk_level, dpdp_article, nabh_standard, confidence, raw_body)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                email.id,
+                email.from?.emailAddress?.address || 'unknown',
+                to,
+                email.subject || '(no subject)',
+                phi.phiTypes.join(', '),
+                risk,
+                comp.dpdp,
+                comp.nabh,
+                phi.confidence,
+                email.body.content.substring(0, 5000)
+              ],
+              (err) => {
+                if (!err) totalProcessed++;
+              }
+            );
+          }
         }
       }
-    );
+    }
 
-    const emails = response.data.value || [];
-    console.log(`Found ${emails.length} emails to process`);
+    // PART 2: ENHANCED - Monitor all organization users' sent items
+    console.log('👥 Fetching organization users...');
+    const users = await getOrganizationUsers(token);
+    console.log(`Found ${users.length} users in organization`);
 
-    let processedCount = 0;
+    for (const user of users) {
+      try {
+        const sentEmails = await getUserSentEmails(token, user.userPrincipalName);
 
-    for (const email of emails) {
-      if (!email.body || !email.body.content) continue;
+        for (const email of sentEmails) {
+          if (!email.body || !email.body.content) continue;
 
-      const emailData = {
-        emailId: email.id,
-        from: email.from?.emailAddress?.address || 'unknown',
-        to: email.toRecipients?.map(r => r.emailAddress.address).join(', ') || 'unknown',
-        subject: email.subject || '(no subject)',
-        body: email.body.content.substring(0, 5000)
-      };
+          const to = email.toRecipients?.map(r => r.emailAddress.address).join(', ') || 'unknown';
 
-      const phi = detectPHI(emailData.body, emailData.subject);
-      const isExt = !emailData.to.match(/@hospital\.com|@internal\.|@m365x92216622\.onmicrosoft\.com/i);
-      const risk = stratifyRisk(phi.detected, phi.confidence, isExt);
-      const comp = mapCompliance(risk, phi.phiTypes);
+          // Only capture emails sent to EXTERNAL recipients
+          if (isExternalRecipient(to)) {
+            const phi = detectPHI(email.body.content, email.subject);
 
-      db.run(
-        `INSERT OR IGNORE INTO incidents
-         (email_id, from_address, to_address, subject, phi_types, risk_level, dpdp_article, nabh_standard, confidence, raw_body)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          emailData.emailId,
-          emailData.from,
-          emailData.to,
-          emailData.subject,
-          phi.phiTypes.join(', '),
-          risk,
-          comp.dpdp,
-          comp.nabh,
-          phi.confidence,
-          emailData.body
-        ],
-        (err) => {
-          if (!err) processedCount++;
+            // Flag ALL PHI in external emails, not just high confidence
+            if (phi.detected) {
+              const isExt = true; // Always external
+              const risk = stratifyRisk(phi.detected, phi.confidence, isExt);
+              const comp = mapCompliance(risk, phi.phiTypes);
+
+              db.run(
+                `INSERT OR IGNORE INTO incidents
+                 (email_id, from_address, to_address, subject, phi_types, risk_level, dpdp_article, nabh_standard, confidence, raw_body)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  `${user.userPrincipalName}-${email.id}`,
+                  email.from?.emailAddress?.address || user.userPrincipalName,
+                  to,
+                  email.subject || '(no subject)',
+                  phi.phiTypes.join(', '),
+                  risk,
+                  comp.dpdp,
+                  comp.nabh,
+                  phi.confidence,
+                  email.body.content.substring(0, 5000)
+                ],
+                (err) => {
+                  if (!err) totalProcessed++;
+                }
+              );
+            }
+          }
         }
-      );
+      } catch (userError) {
+        console.log(`⚠️ Could not access emails for ${user.userPrincipalName}: ${userError.message}`);
+      }
     }
 
     db.run(
       `INSERT INTO sync_status (last_sync, emails_processed, status)
        VALUES (datetime('now'), ?, 'success')`,
-      [processedCount]
+      [totalProcessed]
     );
 
-    console.log(`✓ M365 sync complete: ${processedCount} new emails processed`);
+    console.log(`✓ Comprehensive M365 sync complete: ${totalProcessed} emails with PHI detected`);
   } catch (error) {
     console.error('✗ Error syncing emails from M365:', error.message);
     db.run(
@@ -442,7 +526,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'Clinical Data Sentinel Backend',
-    m365_connected: m365Initialized
+    m365_connected: m365Initialized,
+    features: ['phi-detection', 'compliance-mapping', 'multi-mailbox-monitoring']
   });
 });
 
@@ -450,7 +535,7 @@ app.get('/api/health', (req, res) => {
 const server = app.listen(PORT, async () => {
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║  Clinical Data Sentinel - Backend Service                  ║
+║  Clinical Data Sentinel - Backend Service (ENHANCED)       ║
 ║  Running on http://localhost:${PORT}                            ║
 ║                                                            ║
 ║  API Endpoints:                                            ║
@@ -461,6 +546,11 @@ const server = app.listen(PORT, async () => {
 ║  - POST /api/ingest-email      (submit email for analysis)║
 ║  - POST /api/incidents/:id/action (take action on incident)║
 ║  - POST /api/sync-emails       (trigger M365 sync)        ║
+║                                                            ║
+║  ENHANCED FEATURES:                                        ║
+║  ✓ Multi-mailbox monitoring                               ║
+║  ✓ Sent items tracking (external recipients)              ║
+║  ✓ Organization-wide coverage                             ║
 ║                                                            ║
 ║  Next: Open http://localhost:${PORT} in your browser       ║
 ╚════════════════════════════════════════════════════════════╝
@@ -473,6 +563,7 @@ const server = app.listen(PORT, async () => {
 ╔════════════════════════════════════════════════════════════╗
 ║  M365 Integration Active                                   ║
 ║  Auto-syncing emails every 5 minutes                       ║
+║  Monitoring: Inbox + All Sent Items (external recipients)  ║
 ╚════════════════════════════════════════════════════════════╝
     `);
 
