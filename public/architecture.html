@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clinical Data Sentinel — Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --ink:#10243e; --muted:#64748b; --line:#dbe4ee; --paper:#ffffff;
+      --blue:#1677ff; --cyan:#18b8d8; --green:#16a36a; --amber:#e9a21a;
+      --purple:#805ad5; --red:#e05252;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      font-family:Inter,Arial,sans-serif;
+      color:var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%,rgba(22,119,255,.11),transparent 30%),
+        radial-gradient(circle at 92% 12%,rgba(128,90,213,.10),transparent 28%),
+        linear-gradient(180deg,#f6f9fc 0%,#eef3f8 100%);
+      padding:34px 20px 60px;
+    }
+    .container{
+      max-width:1660px;margin:0 auto;background:rgba(255,255,255,.94);
+      border:1px solid rgba(203,213,225,.8);border-radius:28px;padding:42px;
+      box-shadow:0 30px 90px rgba(15,38,64,.13);overflow:hidden;
+    }
+    .hero{display:flex;justify-content:space-between;gap:30px;align-items:flex-end;margin-bottom:30px}
+    .eyebrow{display:inline-flex;align-items:center;gap:8px;color:#1769aa;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px}
+    .eyebrow:before{content:"";width:28px;height:3px;border-radius:10px;background:linear-gradient(90deg,var(--blue),var(--cyan))}
+    h1{font-family:"Space Grotesk",Inter,sans-serif;font-size:46px;line-height:1.05;font-weight:700;letter-spacing:-1.8px;color:#0d2947}
+    .subtitle{font-size:17px;color:var(--muted);margin-top:13px;max-width:850px;line-height:1.6}
+    .hero-badge{min-width:250px;padding:18px 20px;border-radius:18px;background:linear-gradient(135deg,#0e2c4d,#164d79);color:white;box-shadow:0 14px 30px rgba(16,54,87,.2)}
+    .hero-badge strong{display:block;font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
+    .hero-badge span{display:block;font-size:19px;font-weight:700;margin-top:6px}
+    .architecture-frame{position:relative;border:1px solid #d8e2ec;border-radius:22px;background:linear-gradient(180deg,#fbfdff,#f6f9fc);padding:10px;box-shadow:inset 0 1px 0 #fff,0 16px 45px rgba(16,36,62,.08)}
+    svg{display:block;width:100%;height:auto;border:0;border-radius:16px;margin:0}
+    .section-title{font-family:"Space Grotesk",Inter,sans-serif;font-size:26px;font-weight:700;color:#102d4b;margin:42px 0 20px}
+    .legend{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+    .legend-item,.capability{
+      padding:22px;background:#fff;border:1px solid #e2e8f0;border-radius:17px;
+      box-shadow:0 8px 24px rgba(15,38,64,.055);position:relative;overflow:hidden;
+    }
+    .legend-item:before,.capability:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+    .legend-item h3{font-size:15px;font-weight:800;margin-bottom:9px;color:#163553}
+    .legend-item p,.capability p{font-size:13px;color:#66788d;line-height:1.65}
+    .input-layer{--accent:#1688e8}.processing-layer{--accent:#16a36a}.decision-layer{--accent:#e9a21a}.output-layer{--accent:#805ad5}
+    .color-box{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:1px;background:var(--accent)!important}
+    .capability-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+    .capability h3{font-size:15px;margin-bottom:9px}
+    .capability.green{--accent:#16a36a;background:linear-gradient(180deg,#fff,#f3fcf8)}
+    .capability.blue{--accent:#1688e8;background:linear-gradient(180deg,#fff,#f2f8ff)}
+    .capability.amber{--accent:#e9a21a;background:linear-gradient(180deg,#fff,#fff9ed)}
+    .capability.purple{--accent:#805ad5;background:linear-gradient(180deg,#fff,#f8f4ff)}
+    .footer-note{margin-top:26px;padding:15px 18px;border:1px solid #dbe6f0;border-radius:14px;background:#f7fafc;color:#66788d;font-size:12px;text-align:center}
+    @media(max-width:1100px){.legend,.capability-grid{grid-template-columns:repeat(2,1fr)}.hero{align-items:flex-start;flex-direction:column}.hero-badge{width:100%}}
+    @media(max-width:700px){body{padding:12px}.container{padding:20px;border-radius:18px}h1{font-size:34px}.legend,.capability-grid{grid-template-columns:1fr}.architecture-frame{overflow:auto}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <div>
+        <div class="eyebrow">Clinical Data Sentinel · Architecture Blueprint</div>
+        <h1>Clinical Data Sentinel</h1>
+        <p class="subtitle">End-to-End PHI Detection, Analysis, Decision, and Compliance Orchestration</p>
+      </div>
+      <div class="hero-badge">
+        <strong>Architecture Model</strong>
+        <span>4-Layer Security &amp; Compliance Flow</span>
+      </div>
+    </div>
+
+    <div class="architecture-frame">
+    <svg viewBox="0 0 1800 1100" preserveAspectRatio="xMidYMid meet" aria-label="Clinical Data Sentinel four-layer architecture diagram">
+      <!-- Define arrow markers -->
+      <defs>
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-opacity=".12"/></filter>
+        <marker id="arrowRight" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#5A6B7E"/>
+        </marker>
+        <marker id="arrowDown" markerWidth="10" markerHeight="10" refX="5" refY="9" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L10,0 L5,9 z" fill="#5A6B7E"/>
+        </marker>
+              <linearGradient id="gradBlue" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4db4ff"/><stop offset="100%" stop-color="#1677ff"/></linearGradient>
+        <linearGradient id="gradGreen" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#43d39a"/><stop offset="100%" stop-color="#139b68"/></linearGradient>
+        <linearGradient id="gradOrange" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd36a"/><stop offset="100%" stop-color="#e6a01b"/></linearGradient>
+        <linearGradient id="gradPurple" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#b18bea"/><stop offset="100%" stop-color="#805ad5"/></linearGradient>
+</defs>
+
+      <!-- Title -->
+      <text x="900" y="35" font-size="24" font-weight="700" fill="#0A2E4A" text-anchor="middle">CLINICAL DATA SENTINEL - 4-LAYER ARCHITECTURE</text>
+
+      <!-- ============= LAYER 1: INPUT LAYER ============= -->
+      <g id="layer1">
+        <!-- Layer Background -->
+        <rect x="40" y="70" width="1720" height="200" fill="#F0F8FC" stroke="#3498DB" stroke-width="2" rx="8"/>
+        <text x="60" y="95" font-size="14" font-weight="700" fill="#3498DB" text-transform="uppercase">LAYER 1: INPUT SOURCES</text>
+
+        <!-- M365 Mailbox -->
+        <g>
+          <rect x="80" y="120" width="140" height="110" fill="url(#gradBlue)" stroke="#2980B9" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="150" y="155" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">M365</text>
+          <text x="150" y="172" font-size="11" fill="#0A2E4A" text-anchor="middle">Mailbox</text>
+          <text x="150" y="188" font-size="10" fill="#0A2E4A" text-anchor="middle">Exchange</text>
+        </g>
+
+        <!-- Multi-Mailbox -->
+        <g>
+          <rect x="250" y="120" width="140" height="110" fill="url(#gradBlue)" stroke="#2980B9" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="320" y="155" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Multi-</text>
+          <text x="320" y="172" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Mailbox</text>
+          <text x="320" y="188" font-size="10" fill="#0A2E4A" text-anchor="middle">Enterprise</text>
+        </g>
+
+        <!-- Webhook/API -->
+        <g>
+          <rect x="420" y="120" width="140" height="110" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="490" y="155" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Webhook/</text>
+          <text x="490" y="172" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">API</text>
+          <text x="490" y="188" font-size="10" fill="#0A2E4A" text-anchor="middle">Real-Time</text>
+        </g>
+
+        <!-- Email Events -->
+        <g>
+          <rect x="590" y="120" width="140" height="110" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="660" y="155" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Email</text>
+          <text x="660" y="172" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Events</text>
+          <text x="660" y="188" font-size="10" fill="#0A2E4A" text-anchor="middle">Send/Draft</text>
+        </g>
+
+        <!-- Email Content -->
+        <g>
+          <rect x="760" y="120" width="140" height="110" fill="url(#gradBlue)" stroke="#2980B9" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="830" y="155" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Email</text>
+          <text x="830" y="172" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Content</text>
+          <text x="830" y="188" font-size="10" fill="#0A2E4A" text-anchor="middle">Body+Attach</text>
+        </g>
+
+        <!-- Recipient Info -->
+        <g>
+          <rect x="930" y="120" width="140" height="110" fill="url(#gradBlue)" stroke="#2980B9" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="1000" y="155" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Recipient</text>
+          <text x="1000" y="172" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Info</text>
+          <text x="1000" y="188" font-size="10" fill="#0A2E4A" text-anchor="middle">External/Int</text>
+        </g>
+
+        <!-- Policies -->
+        <g>
+          <rect x="1100" y="120" width="140" height="110" fill="url(#gradOrange)" stroke="#D68910" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="1170" y="155" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Org</text>
+          <text x="1170" y="172" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Policies</text>
+          <text x="1170" y="188" font-size="10" fill="#0A2E4A" text-anchor="middle">Rules/Context</text>
+        </g>
+
+        <!-- User Context -->
+        <g>
+          <rect x="1270" y="120" width="140" height="110" fill="url(#gradOrange)" stroke="#D68910" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="1340" y="155" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">User</text>
+          <text x="1340" y="172" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Context</text>
+          <text x="1340" y="188" font-size="10" fill="#0A2E4A" text-anchor="middle">History/Risk</text>
+        </g>
+
+        <!-- Arrows down -->
+        <line x1="150" y1="230" x2="150" y2="260" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="320" y1="230" x2="320" y2="260" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="490" y1="230" x2="490" y2="260" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="660" y1="230" x2="660" y2="260" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="830" y1="230" x2="830" y2="260" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="1000" y1="230" x2="1000" y2="260" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="1170" y1="230" x2="1170" y2="260" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="1340" y1="230" x2="1340" y2="260" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+      </g>
+
+      <!-- ============= LAYER 2: PROCESSING LAYER ============= -->
+      <g id="layer2">
+        <!-- Layer Background -->
+        <rect x="40" y="260" width="1720" height="240" fill="#F0FBF5" stroke="#27AE60" stroke-width="2" rx="8"/>
+        <text x="60" y="285" font-size="14" font-weight="700" fill="#27AE60" text-transform="uppercase">LAYER 2: AI DETECTION & ANALYSIS ENGINE</text>
+
+        <!-- AI Core -->
+        <g>
+          <rect x="80" y="310" width="160" height="160" fill="url(#gradGreen)" stroke="#1E8449" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="160" y="350" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">AI Detection</text>
+          <text x="160" y="370" font-size="11" fill="#0A2E4A" text-anchor="middle">LLM-Based</text>
+          <text x="160" y="387" font-size="11" fill="#0A2E4A" text-anchor="middle">Medical Context</text>
+          <text x="160" y="404" font-size="11" fill="#0A2E4A" text-anchor="middle">87% Accuracy</text>
+        </g>
+
+        <!-- 8 PHI Patterns -->
+        <g>
+          <rect x="280" y="310" width="160" height="160" fill="url(#gradOrange)" stroke="#D35400" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="360" y="330" font-size="12" font-weight="700" fill="#0A2E4A" text-anchor="middle">8 PHI Patterns</text>
+          <text x="360" y="348" font-size="9" fill="#0A2E4A" text-anchor="middle">• Aadhar • PAN</text>
+          <text x="360" y="361" font-size="9" fill="#0A2E4A" text-anchor="middle">• SSN • MRN</text>
+          <text x="360" y="374" font-size="9" fill="#0A2E4A" text-anchor="middle">• Policy # • Phone</text>
+          <text x="360" y="387" font-size="9" fill="#0A2E4A" text-anchor="middle">• Email • DOB</text>
+          <text x="360" y="405" font-size="10" fill="#0A2E4A" text-anchor="middle">Pattern Match</text>
+        </g>
+
+        <!-- Context Analysis -->
+        <g>
+          <rect x="480" y="310" width="160" height="160" fill="url(#gradGreen)" stroke="#1E8449" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="560" y="350" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Context</text>
+          <text x="560" y="370" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Analysis</text>
+          <text x="560" y="387" font-size="10" fill="#0A2E4A" text-anchor="middle">Medical Dept</text>
+          <text x="560" y="404" font-size="10" fill="#0A2E4A" text-anchor="middle">Recipient Type</text>
+        </g>
+
+        <!-- Risk Scoring -->
+        <g>
+          <rect x="680" y="310" width="160" height="160" fill="url(#gradOrange)" stroke="#D35400" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="760" y="350" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Risk Scoring</text>
+          <text x="760" y="370" font-size="11" fill="#0A2E4A" text-anchor="middle">ANOMALOUS</text>
+          <text x="760" y="387" font-size="11" fill="#0A2E4A" text-anchor="middle">REVIEW</text>
+          <text x="760" y="404" font-size="11" fill="#0A2E4A" text-anchor="middle">SAFE</text>
+        </g>
+
+        <!-- Confidence Scoring -->
+        <g>
+          <rect x="880" y="310" width="160" height="160" fill="url(#gradGreen)" stroke="#1E8449" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="960" y="345" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Confidence</text>
+          <text x="960" y="365" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Scoring</text>
+          <text x="960" y="385" font-size="10" fill="#0A2E4A" text-anchor="middle">ANOMALOUS: 85%</text>
+          <text x="960" y="402" font-size="10" fill="#0A2E4A" text-anchor="middle">SAFE: 73%</text>
+        </g>
+
+        <!-- Compliance Mapping -->
+        <g>
+          <rect x="1080" y="310" width="160" height="160" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="1160" y="345" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Compliance</text>
+          <text x="1160" y="365" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Mapping</text>
+          <text x="1160" y="385" font-size="10" fill="#0A2E4A" text-anchor="middle">DPDP Art 8</text>
+          <text x="1160" y="402" font-size="10" fill="#0A2E4A" text-anchor="middle">NABH Std 2.3</text>
+        </g>
+
+        <!-- Incident Log -->
+        <g>
+          <rect x="1280" y="310" width="160" height="160" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="1360" y="350" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Incident Log</text>
+          <text x="1360" y="370" font-size="11" fill="#0A2E4A" text-anchor="middle">Timestamp</text>
+          <text x="1360" y="387" font-size="11" fill="#0A2E4A" text-anchor="middle">PHI Patterns</text>
+          <text x="1360" y="404" font-size="11" fill="#0A2E4A" text-anchor="middle">Risk Level</text>
+        </g>
+
+        <!-- Arrows down -->
+        <line x1="160" y1="470" x2="160" y2="500" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="360" y1="470" x2="360" y2="500" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="560" y1="470" x2="560" y2="500" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="760" y1="470" x2="760" y2="500" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="960" y1="470" x2="960" y2="500" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="1160" y1="470" x2="1160" y2="500" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+        <line x1="1360" y1="470" x2="1360" y2="500" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+      </g>
+
+      <!-- ============= LAYER 3: DECISION LAYER ============= -->
+      <g id="layer3">
+        <!-- Layer Background -->
+        <rect x="40" y="500" width="1720" height="200" fill="#FFFAF0" stroke="#F39C12" stroke-width="2" rx="8"/>
+        <text x="60" y="525" font-size="14" font-weight="700" fill="#F39C12" text-transform="uppercase">LAYER 3: ADMIN DECISION & ACTION</text>
+
+        <!-- Admin Dashboard -->
+        <g>
+          <rect x="80" y="550" width="180" height="120" fill="url(#gradOrange)" stroke="#D68910" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="170" y="590" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Admin</text>
+          <text x="170" y="610" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Dashboard</text>
+          <text x="170" y="628" font-size="10" fill="#0A2E4A" text-anchor="middle">Incident View</text>
+        </g>
+
+        <!-- Decision Point (Diamond) -->
+        <g>
+          <polygon points="380,610 430,550 480,610 430,670" fill="url(#gradOrange)" stroke="#D68910" stroke-width="2"/>
+          <text x="430" y="615" font-size="12" font-weight="700" fill="#0A2E4A" text-anchor="middle">Admin</text>
+          <text x="430" y="630" font-size="12" font-weight="700" fill="#0A2E4A" text-anchor="middle">Decides</text>
+        </g>
+
+        <!-- Approve Action -->
+        <g>
+          <rect x="560" y="550" width="140" height="120" fill="#E8F8F5" stroke="#27AE60" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="630" y="590" font-size="13" font-weight="700" fill="#27AE60" text-anchor="middle">✓ APPROVE</text>
+          <text x="630" y="610" font-size="11" fill="#186A3B" text-anchor="middle">Email Sends</text>
+          <text x="630" y="628" font-size="9" fill="#186A3B" text-anchor="middle">Trusted Context</text>
+        </g>
+
+        <!-- Review Action -->
+        <g>
+          <rect x="740" y="550" width="140" height="120" fill="#FFF8E8" stroke="#F39C12" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="810" y="590" font-size="13" font-weight="700" fill="#D68910" text-anchor="middle">⚠ REVIEW</text>
+          <text x="810" y="610" font-size="11" fill="#8A5D00" text-anchor="middle">Investigate</text>
+          <text x="810" y="628" font-size="9" fill="#8A5D00" text-anchor="middle">More Context</text>
+        </g>
+
+        <!-- Block Action -->
+        <g>
+          <rect x="920" y="550" width="140" height="120" fill="#FBE8E8" stroke="#E74C3C" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="990" y="590" font-size="13" font-weight="700" fill="#E74C3C" text-anchor="middle">✕ BLOCK</text>
+          <text x="990" y="610" font-size="11" fill="#A93226" text-anchor="middle">Quarantine</text>
+          <text x="990" y="628" font-size="9" fill="#A93226" text-anchor="middle">Prevent Leak</text>
+        </g>
+
+        <!-- Action Logger -->
+        <g>
+          <rect x="1120" y="550" width="180" height="120" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="1210" y="590" font-size="13" font-weight="700" fill="white" text-anchor="middle">Action Logger</text>
+          <text x="1210" y="610" font-size="11" fill="#F3E8F8" text-anchor="middle">Timestamp</text>
+          <text x="1210" y="628" font-size="10" fill="#F3E8F8" text-anchor="middle">User + Decision</text>
+        </g>
+
+        <!-- Arrows down -->
+        <line x1="430" y1="670" x2="430" y2="700" stroke="#5A6B7E" stroke-width="2" marker-end="url(#arrowDown)"/>
+      </g>
+
+      <!-- ============= LAYER 4: OUTPUT LAYER ============= -->
+      <g id="layer4">
+        <!-- Layer Background -->
+        <rect x="40" y="700" width="1720" height="200" fill="#F3E8F8" stroke="#9B59B6" stroke-width="2" rx="8"/>
+        <text x="60" y="725" font-size="14" font-weight="700" fill="#9B59B6" text-transform="uppercase">LAYER 4: OUTPUT & COMPLIANCE ARTIFACTS</text>
+
+        <!-- Incident Database -->
+        <g>
+          <rect x="80" y="750" width="160" height="120" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="160" y="790" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Incident</text>
+          <text x="160" y="810" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Database</text>
+          <text x="160" y="828" font-size="9" fill="#0A2E4A" text-anchor="middle">7-Year Retention</text>
+        </g>
+
+        <!-- Analytics Dashboard -->
+        <g>
+          <rect x="280" y="750" width="160" height="120" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="360" y="790" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Analytics</text>
+          <text x="360" y="810" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Dashboard</text>
+          <text x="360" y="828" font-size="9" fill="#0A2E4A" text-anchor="middle">Risk Distribution</text>
+        </g>
+
+        <!-- Compliance Reports -->
+        <g>
+          <rect x="480" y="750" width="160" height="120" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="560" y="790" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Compliance</text>
+          <text x="560" y="810" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Reports</text>
+          <text x="560" y="828" font-size="9" fill="#0A2E4A" text-anchor="middle">DPDP/NABH Proof</text>
+        </g>
+
+        <!-- Audit Trail -->
+        <g>
+          <rect x="680" y="750" width="160" height="120" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="760" y="790" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Audit Trail</text>
+          <text x="760" y="810" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Logging</text>
+          <text x="760" y="828" font-size="9" fill="#0A2E4A" text-anchor="middle">Regulatory Ready</text>
+        </g>
+
+        <!-- Employee Insights -->
+        <g>
+          <rect x="880" y="750" width="160" height="120" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="960" y="790" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Employee</text>
+          <text x="960" y="810" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Insights</text>
+          <text x="960" y="828" font-size="9" fill="#0A2E4A" text-anchor="middle">Training Needs</text>
+        </g>
+
+        <!-- Governance Portal -->
+        <g>
+          <rect x="1080" y="750" width="160" height="120" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="1160" y="790" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Governance</text>
+          <text x="1160" y="810" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Portal</text>
+          <text x="1160" y="828" font-size="9" fill="#0A2E4A" text-anchor="middle">Executive View</text>
+        </g>
+
+        <!-- External Integrations -->
+        <g>
+          <rect x="1280" y="750" width="160" height="120" fill="url(#gradPurple)" stroke="#8E44AD" stroke-width="2" rx="10" filter="url(#softShadow)"/>
+          <text x="1360" y="790" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">External</text>
+          <text x="1360" y="810" font-size="13" font-weight="700" fill="#0A2E4A" text-anchor="middle">Integrations</text>
+          <text x="1360" y="828" font-size="9" fill="#0A2E4A" text-anchor="middle">Webhooks/API</text>
+        </g>
+      </g>
+
+      <!-- ============= DATA FLOW ARROWS ============= -->
+      <!-- Horizontal flow through layers -->
+      <line x1="1500" y1="175" x2="1600" y2="175" stroke="#5A6B7E" stroke-width="3" marker-end="url(#arrowRight)"/>
+      <line x1="1500" y1="390" x2="1600" y2="390" stroke="#5A6B7E" stroke-width="3" marker-end="url(#arrowRight)"/>
+      <line x1="1500" y1="610" x2="1600" y2="610" stroke="#5A6B7E" stroke-width="3" marker-end="url(#arrowRight)"/>
+      <line x1="1500" y1="810" x2="1600" y2="810" stroke="#5A6B7E" stroke-width="3" marker-end="url(#arrowRight)"/>
+
+      <!-- Legend/Summary -->
+    </svg>
+</div>
+
+    <!-- Legend -->
+    <h2 class="section-title">Architecture Layers Explained</h2>
+    <div class="legend">
+      <div class="legend-item input-layer">
+        <h3><span class="color-box" style="background: #3498DB;"></span>Layer 1: Input Sources</h3>
+        <p>All data sources feeding into Clinical Data Sentinel: M365 mailboxes, webhook triggers, email events, email content, recipient information, organizational policies, and user context.</p>
+      </div>
+
+      <div class="legend-item processing-layer">
+        <h3><span class="color-box" style="background: #27AE60;"></span>Layer 2: AI Detection & Analysis</h3>
+        <p>The processing engine: LLM-based AI detection, 8 PHI pattern recognition, context analysis, risk scoring (ANOMALOUS/REVIEW/SAFE), confidence scoring (73-85%), compliance mapping (DPDP/NABH), and incident logging.</p>
+      </div>
+
+      <div class="legend-item decision-layer">
+        <h3><span class="color-box" style="background: #F39C12;"></span>Layer 3: Admin Decision & Action</h3>
+        <p>Human-in-the-loop control: Admin dashboard shows incidents, decision point determines action, three possible outcomes (Approve/Review/Block), and complete action logging for audit trail.</p>
+      </div>
+
+      <div class="legend-item output-layer">
+        <h3><span class="color-box" style="background: #9B59B6;"></span>Layer 4: Output & Compliance</h3>
+        <p>Deliverables for different stakeholders: Incident database (7-year retention), analytics dashboard (risk insights), compliance reports (DPDP/NABH proof), audit trail (regulatory ready), employee insights (training), governance portal (executive view), and external integrations.</p>
+      </div>
+    </div>
+
+    <!-- Key Features -->
+    <h2 class="section-title">Key Capabilities</h2>
+    <div class="legend">
+      <div class="capability green">
+        <h3 style="margin-bottom: 8px;">🔍 Real-Time Detection</h3>
+        <p>Scans every M365 email instantly for 8 PHI patterns with 87% accuracy. No delays, no missed emails.</p>
+      </div>
+
+      <div class="capability blue">
+        <h3 style="margin-bottom: 8px;">⚡ Risk Classification</h3>
+        <p>Classifies incidents as ANOMALOUS (85%), REVIEW (60%), or SAFE (73%) based on PHI patterns and context.</p>
+      </div>
+
+      <div class="capability amber">
+        <h3 style="margin-bottom: 8px;">✓ Admin Control</h3>
+        <p>Simple one-click decisions: Approve to send, Review for more context, or Block to prevent leak.</p>
+      </div>
+
+      <div class="capability purple">
+        <h3 style="margin-bottom: 8px;">📋 Regulatory Compliance</h3>
+        <p>Complete audit trail meets DPDP Act 2023 Article 8 and NABH Standard 2.3. Regulator-ready evidence.</p>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      DATA FLOW · Input Sources → AI Analysis → Admin Decision → Compliance Output
+      &nbsp;•&nbsp; Real-time processing &nbsp;•&nbsp; Human-in-the-loop controls &nbsp;•&nbsp; Complete audit trail
+    </div>
+  </div>
+</body>
+</html>
