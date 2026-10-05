@@ -278,6 +278,70 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
+// API: Get detailed analytics
+app.get('/api/analytics', (req, res) => {
+  Promise.all([
+    // Risk level distribution
+    new Promise((resolve) => {
+      db.all(`
+        SELECT risk_level, COUNT(*) as count FROM incidents
+        GROUP BY risk_level
+      `, (err, rows) => resolve(rows || []));
+    }),
+    // PHI types breakdown
+    new Promise((resolve) => {
+      db.all(`
+        SELECT phi_types, COUNT(*) as count FROM incidents
+        WHERE phi_types IS NOT NULL
+        GROUP BY phi_types
+        ORDER BY count DESC
+        LIMIT 10
+      `, (err, rows) => resolve(rows || []));
+    }),
+    // Top senders
+    new Promise((resolve) => {
+      db.all(`
+        SELECT from_address, COUNT(*) as count FROM incidents
+        GROUP BY from_address
+        ORDER BY count DESC
+        LIMIT 10
+      `, (err, rows) => resolve(rows || []));
+    }),
+    // External vs Internal
+    new Promise((resolve) => {
+      db.all(`
+        SELECT
+          CASE WHEN to_address LIKE '%@%' AND to_address NOT LIKE '%kloudeai%'
+               THEN 'External'
+               ELSE 'Internal'
+          END as recipient_type,
+          COUNT(*) as count
+        FROM incidents
+        GROUP BY recipient_type
+      `, (err, rows) => resolve(rows || []));
+    }),
+    // Average confidence by risk level
+    new Promise((resolve) => {
+      db.all(`
+        SELECT risk_level,
+               ROUND(AVG(confidence), 1) as avg_confidence,
+               COUNT(*) as count
+        FROM incidents
+        GROUP BY risk_level
+      `, (err, rows) => resolve(rows || []));
+    })
+  ]).then(([riskDist, phiTypes, topSenders, recipients, confidence]) => {
+    res.json({
+      risk_distribution: riskDist,
+      phi_types_breakdown: phiTypes,
+      top_senders: topSenders,
+      recipient_types: recipients,
+      confidence_by_risk: confidence,
+      timestamp: new Date()
+    });
+  });
+});
+
 // API: Get sync status
 app.get('/api/sync-status', (req, res) => {
   db.get(`
@@ -318,6 +382,21 @@ app.post('/api/incidents/:id/action', (req, res) => {
           res.json({ success: true, incidentId, action });
         }
       );
+    }
+  );
+});
+
+// API: Get action history for an incident
+app.get('/api/incidents/:id/actions', (req, res) => {
+  db.all(
+    'SELECT * FROM actions WHERE incident_id = ? ORDER BY taken_at DESC',
+    [req.params.id],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows || []);
     }
   );
 });
@@ -538,7 +617,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     service: 'Clinical Data Sentinel Backend',
     m365_connected: m365Initialized,
-    features: ['phi-detection', 'compliance-mapping', 'multi-mailbox-monitoring']
+    features: ['phi-detection', 'compliance-mapping', 'multi-mailbox-monitoring', 'analytics', 'action-tracking']
   });
 });
 
@@ -553,15 +632,20 @@ const server = app.listen(PORT, async () => {
 ║  - GET  /api/incidents         (list all incidents)       ║
 ║  - GET  /api/incidents/:id     (incident details)         ║
 ║  - GET  /api/stats             (dashboard stats)          ║
+║  - GET  /api/analytics         (analytics & insights)     ║
 ║  - GET  /api/sync-status       (M365 sync status)         ║
 ║  - POST /api/ingest-email      (submit email for analysis)║
 ║  - POST /api/incidents/:id/action (take action on incident)║
+║  - GET  /api/incidents/:id/actions (action history)       ║
 ║  - POST /api/sync-emails       (trigger M365 sync)        ║
 ║                                                            ║
 ║  ENHANCED FEATURES:                                        ║
 ║  ✓ Multi-mailbox monitoring                               ║
 ║  ✓ Sent items tracking (external recipients)              ║
+║  ✓ Action history & tracking                              ║
+║  ✓ Analytics dashboard with charts                        ║
 ║  ✓ Organization-wide coverage                             ║
+║  ✓ 100% FREE - No third-party API costs                   ║
 ║                                                            ║
 ║  Next: Open http://localhost:${PORT} in your browser       ║
 ╚════════════════════════════════════════════════════════════╝

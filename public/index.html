@@ -353,6 +353,105 @@
     padding: 2rem 1rem;
   }
 
+  .analytics-section {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+
+  .chart-card {
+    background: var(--bg-primary);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .chart-card h4 {
+    margin: 0 0 1rem 0;
+    font-size: 0.9rem;
+    color: var(--fg-primary);
+  }
+
+  .chart-bar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .chart-label {
+    width: 100px;
+    font-size: 0.8rem;
+    color: var(--fg-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chart-bar-fill {
+    flex: 1;
+    height: 24px;
+    background: linear-gradient(90deg, var(--accent), #5558d9);
+    border-radius: 4px;
+    position: relative;
+  }
+
+  .chart-value {
+    width: 40px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--fg-secondary);
+    text-align: right;
+  }
+
+  .action-timeline {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .timeline-item {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+
+  .timeline-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  .timeline-content {
+    flex: 1;
+  }
+
+  .timeline-action {
+    font-weight: 600;
+    color: var(--fg-primary);
+  }
+
+  .timeline-time {
+    font-size: 0.75rem;
+    color: var(--fg-tertiary);
+  }
+
   .loading {
     text-align: center;
     padding: 1rem;
@@ -514,6 +613,49 @@
     </div>
   </div>
 
+  <!-- Analytics Dashboard Section -->
+  <div class="analytics-section">
+    <h2>📊 Analytics & Insights</h2>
+
+    <div class="analytics-grid">
+      <!-- Risk Distribution Chart -->
+      <div class="chart-card">
+        <h4>Risk Level Distribution</h4>
+        <div id="riskDistChart"></div>
+      </div>
+
+      <!-- PHI Types Breakdown -->
+      <div class="chart-card">
+        <h4>Top 10 PHI Types Detected</h4>
+        <div id="phiTypesChart"></div>
+      </div>
+
+      <!-- Top Senders -->
+      <div class="chart-card">
+        <h4>Top 10 Senders by Incident Count</h4>
+        <div id="topSendersChart"></div>
+      </div>
+
+      <!-- Recipient Types -->
+      <div class="chart-card">
+        <h4>External vs Internal Recipients</h4>
+        <div id="recipientTypesChart"></div>
+      </div>
+
+      <!-- Confidence by Risk Level -->
+      <div class="chart-card">
+        <h4>Average Confidence by Risk Level</h4>
+        <div id="confidenceChart"></div>
+      </div>
+
+      <!-- Action Timeline (when incident selected) -->
+      <div class="chart-card" id="actionTimelineCard" style="display: none;">
+        <h4>Action History</h4>
+        <div class="action-timeline" id="actionTimeline"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="footer">
     Clinical Data Sentinel | Real-time PHI Detection & Compliance
   </div>
@@ -608,6 +750,9 @@
     // Initial AI analysis
     const analysis = getInitialAnalysis();
     addMessage("assistant", analysis);
+
+    // Load action history for this incident
+    loadActionHistory(selectedIncident.id);
 
     document.getElementById("chatInput").focus();
     renderIncidents();
@@ -716,16 +861,196 @@
     return div.innerHTML;
   }
 
+  // Fetch and display analytics
+  async function loadAnalytics() {
+    try {
+      const response = await fetch(`${API_BASE}/analytics`);
+      const analytics = await response.json();
+
+      // Risk Distribution
+      renderRiskDistribution(analytics.risk_distribution);
+
+      // PHI Types
+      renderPhiTypes(analytics.phi_types_breakdown);
+
+      // Top Senders
+      renderTopSenders(analytics.top_senders);
+
+      // Recipient Types
+      renderRecipientTypes(analytics.recipient_types);
+
+      // Confidence by Risk
+      renderConfidenceChart(analytics.confidence_by_risk);
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+    }
+  }
+
+  function renderRiskDistribution(data) {
+    const container = document.getElementById('riskDistChart');
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p style="color: var(--fg-tertiary); margin: 0;">No data yet</p>';
+      return;
+    }
+
+    const maxCount = Math.max(...data.map(d => d.count));
+    container.innerHTML = data.map(item => {
+      const percentage = (item.count / maxCount) * 100;
+      const color = item.risk_level === 'safe' ? '#10b981' : item.risk_level === 'review' ? '#f59e0b' : '#ef4444';
+      return `
+        <div class="chart-bar">
+          <div class="chart-label">${item.risk_level.toUpperCase()}</div>
+          <div class="chart-bar-fill" style="background: ${color}; width: ${percentage}%;"></div>
+          <div class="chart-value">${item.count}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderPhiTypes(data) {
+    const container = document.getElementById('phiTypesChart');
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p style="color: var(--fg-tertiary); margin: 0;">No PHI types detected</p>';
+      return;
+    }
+
+    const maxCount = Math.max(...data.map(d => d.count));
+    container.innerHTML = data.map(item => {
+      const percentage = (item.count / maxCount) * 100;
+      // Format phi_types (remove underscores and capitalize)
+      const typeLabel = (item.phi_types || 'unknown').replace(/_/g, ' ').split(',')[0];
+      return `
+        <div class="chart-bar">
+          <div class="chart-label" title="${item.phi_types}">${typeLabel}</div>
+          <div class="chart-bar-fill"></div>
+          <div class="chart-value">${item.count}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderTopSenders(data) {
+    const container = document.getElementById('topSendersChart');
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p style="color: var(--fg-tertiary); margin: 0;">No sender data</p>';
+      return;
+    }
+
+    const maxCount = Math.max(...data.map(d => d.count));
+    container.innerHTML = data.map(item => {
+      const percentage = (item.count / maxCount) * 100;
+      const shortEmail = item.from_address.split('@')[0].substring(0, 15);
+      return `
+        <div class="chart-bar">
+          <div class="chart-label" title="${item.from_address}">${shortEmail}</div>
+          <div class="chart-bar-fill"></div>
+          <div class="chart-value">${item.count}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderRecipientTypes(data) {
+    const container = document.getElementById('recipientTypesChart');
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p style="color: var(--fg-tertiary); margin: 0;">No recipient data</p>';
+      return;
+    }
+
+    const maxCount = Math.max(...data.map(d => d.count));
+    container.innerHTML = data.map(item => {
+      const percentage = (item.count / maxCount) * 100;
+      const color = item.recipient_type === 'External' ? '#ef4444' : '#10b981';
+      return `
+        <div class="chart-bar">
+          <div class="chart-label">${item.recipient_type}</div>
+          <div class="chart-bar-fill" style="background: ${color};"></div>
+          <div class="chart-value">${item.count}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderConfidenceChart(data) {
+    const container = document.getElementById('confidenceChart');
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p style="color: var(--fg-tertiary); margin: 0;">No confidence data</p>';
+      return;
+    }
+
+    const maxConfidence = Math.max(...data.map(d => d.avg_confidence || 0));
+    container.innerHTML = data.map(item => {
+      const percentage = (item.avg_confidence / maxConfidence) * 100;
+      const color = item.risk_level === 'safe' ? '#10b981' : item.risk_level === 'review' ? '#f59e0b' : '#ef4444';
+      return `
+        <div class="chart-bar">
+          <div class="chart-label">${item.risk_level.toUpperCase()}</div>
+          <div class="chart-bar-fill" style="background: ${color};"></div>
+          <div class="chart-value">${item.avg_confidence}%</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Fetch action history for an incident
+  async function loadActionHistory(incidentId) {
+    try {
+      const response = await fetch(`${API_BASE}/incidents/${incidentId}/actions`);
+      if (!response.ok) {
+        document.getElementById('actionTimelineCard').style.display = 'none';
+        return;
+      }
+
+      const actions = await response.json();
+
+      if (!actions || actions.length === 0) {
+        document.getElementById('actionTimelineCard').style.display = 'none';
+        return;
+      }
+
+      renderActionTimeline(actions);
+      document.getElementById('actionTimelineCard').style.display = 'block';
+    } catch (error) {
+      console.error('Error loading action history:', error);
+      document.getElementById('actionTimelineCard').style.display = 'none';
+    }
+  }
+
+  function renderActionTimeline(actions) {
+    const container = document.getElementById('actionTimeline');
+
+    container.innerHTML = actions.map(action => {
+      const date = new Date(action.taken_at);
+      const time = date.toLocaleTimeString();
+      const badge = action.action === 'approve' ? '<span style="color: var(--success);">✓ APPROVED</span>' :
+                    action.action === 'review' ? '<span style="color: var(--warning);">⚠ REVIEW</span>' :
+                    '<span style="color: var(--critical);">✕ BLOCKED</span>';
+
+      return `
+        <div class="timeline-item">
+          <div class="timeline-dot"></div>
+          <div class="timeline-content">
+            <div class="timeline-action">${badge}</div>
+            <div class="timeline-time">${time} • ${action.taken_by}</div>
+            <div style="font-size: 0.75rem; color: var(--fg-tertiary); margin-top: 0.25rem;">${escapeHtml(action.reason)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
   // Auto-refresh every 5 seconds
   function startAutoRefresh() {
     autoRefreshInterval = setInterval(() => {
       loadIncidents();
       updateStats();
+      loadAnalytics();
     }, 5000);
   }
 
   // Initialize
   loadIncidents();
+  loadAnalytics();
   startAutoRefresh();
 
   // Stop refresh on page unload
