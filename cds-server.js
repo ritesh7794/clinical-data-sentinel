@@ -124,14 +124,14 @@ async function initializeM365Client() {
 // PHI Detection Engine
 function detectPHI(emailBody, emailSubject) {
   const patterns = {
-    patient_name: /(?:patient|subject|name)[\s:]*([A-Z][a-z]+ [A-Z][a-z]+)/gi,
-    patient_id: /(?:patient\s*id|MRN|medical\s*record|admission)[\s:]*([0-9]{4,})/gi,
-    ssn: /(?:SSN|social\s*security|aadhar|pan)[\s:]*([0-9\-]+)/gi,
-    diagnosis: /(?:diagnosis|condition|disease|covid|diabetes|cancer)[\s:]*([A-Z][a-z\s]+)/gi,
-    medication: /(?:medication|prescribed|drug|medicine|tablet)[\s:]*([A-Z][a-z\s]+)/gi,
-    insurance_details: /(?:insurance|policy|claim)[\s:]*([A-Z0-9\-]+)/gi,
-    phone: /(?:phone|contact|mobile)[\s:]*(\+?[\d\s\-()]{10,})/gi,
-    hospital_id: /(?:hospital|ward|bed|room)[\s:]*(?:id|no|number)[\s:]*([A-Z0-9\-]+)/gi
+    patient_name: /(?:patient|subject|name)[\s:]*([a-z][a-z]+ [a-z][a-z]+)/i,
+    patient_id: /(?:patient\s*id|mrn|medical\s*record|admission)[\s:]*([0-9]{4,})/i,
+    ssn: /(?:ssn|social\s*security|aadhar|pan)[\s:]*([0-9\-]+)/i,
+    diagnosis: /(?:diagnosis|condition|disease|covid|diabetes|cancer)[\s:]*([a-z][a-z\s]+)/i,
+    medication: /(?:medication|prescribed|drug|medicine|tablet)[\s:]*([a-z][a-z\s]+)/i,
+    insurance_details: /(?:insurance|policy|claim)[\s:]*([a-z0-9\-]+)/i,
+    phone: /(?:phone|contact|mobile)[\s:]*(\+?[\d\s\-()]{10,})/i,
+    hospital_id: /(?:hospital|ward|bed|room)[\s:]*(?:id|no|number)[\s:]*([a-z0-9\-]+)/i
   };
 
   const fullText = `${emailSubject} ${emailBody}`.toLowerCase();
@@ -519,6 +519,17 @@ app.post('/api/sync-emails', async (req, res) => {
 
   res.json({ message: 'Sync initiated', timestamp: new Date() });
   await syncEmailsFromM365();
+});
+
+// API: Clear all incidents (for testing/reset)
+app.delete('/api/incidents', (req, res) => {
+  db.run('DELETE FROM incidents', (err) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'All incidents cleared', timestamp: new Date() });
+  });
 });
 
 // Health check
