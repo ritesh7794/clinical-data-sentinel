@@ -530,6 +530,174 @@
     }
   }
 
+  /* Status Banner Styles */
+  .status-banner {
+    background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+    border-left: 4px solid #4CAF50;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .status-content {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .status-indicator-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: #2E7D32;
+    font-size: 14px;
+  }
+
+  .status-dot-banner {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #4CAF50;
+    animation: pulse 2s infinite;
+    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+  }
+
+  .status-details {
+    display: flex;
+    gap: 12px;
+    font-size: 13px;
+    color: #1B5E20;
+  }
+
+  .status-info {
+    display: flex;
+    align-items: center;
+  }
+
+  .status-separator {
+    color: #81C784;
+  }
+
+  /* Quick Metrics Grid Styles */
+  .quick-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .quick-metric-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+  }
+
+  .quick-metric-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .quick-metric-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .quick-metric-icon {
+    font-size: 20px;
+  }
+
+  .quick-metric-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .quick-metric-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #1a1a1a;
+  }
+
+  .quick-metric-label {
+    font-size: 12px;
+    color: #999;
+    font-weight: 500;
+  }
+
+  .quick-metric-description {
+    font-size: 11px;
+    color: #CCC;
+    font-style: italic;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .quick-metric-card {
+      background: var(--bg-secondary);
+    }
+
+    :root:not([data-theme="light"]) .quick-metric-value {
+      color: var(--fg-primary);
+    }
+
+    :root:not([data-theme="light"]) .quick-metric-title {
+      color: var(--fg-secondary);
+    }
+
+    :root:not([data-theme="light"]) .quick-metric-label {
+      color: var(--fg-tertiary);
+    }
+
+    :root:not([data-theme="light"]) .quick-metric-description {
+      color: var(--fg-tertiary);
+    }
+
+    :root:not([data-theme="light"]) .status-banner {
+      background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%);
+    }
+
+    :root:not([data-theme="light"]) .status-details {
+      color: #81C784;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .quick-metrics-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .quick-metrics-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .quick-metric-value {
+      font-size: 24px;
+    }
+
+    .status-banner {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .status-content {
+      flex-direction: column;
+      width: 100%;
+    }
+  }
+
   @media (max-width: 600px) {
     .header h1 { font-size: 1.5rem; }
     .metrics { grid-template-columns: 1fr; }
@@ -552,6 +720,64 @@
 
   <div id="setupBanner" class="setup-banner" style="display: none;">
     ⚠️ Setup required: Run <code>npm run test-email</code> to load sample incidents
+  </div>
+
+  <!-- Status Banner -->
+  <div class="status-banner">
+    <div class="status-content">
+      <div class="status-indicator-banner">
+        <span class="status-dot-banner"></span>
+        <span class="status-text">SYSTEM ACTIVE</span>
+      </div>
+      <div class="status-details">
+        <span class="status-info">Last threat detected: <span id="lastThreatTime">2 minutes ago</span></span>
+        <span class="status-separator">•</span>
+        <span class="status-info">Status: Monitoring • Total Incidents: <span id="totalIncidentsStatus">0</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Metrics Grid -->
+  <div class="quick-metrics-grid">
+    <div class="quick-metric-card">
+      <div class="quick-metric-header">
+        <span class="quick-metric-icon">🚫</span>
+        <span class="quick-metric-title">Blocked</span>
+      </div>
+      <div class="quick-metric-value" id="blockedCount">0</div>
+      <div class="quick-metric-label">Incidents</div>
+      <div class="quick-metric-description">Admin action taken</div>
+    </div>
+
+    <div class="quick-metric-card">
+      <div class="quick-metric-header">
+        <span class="quick-metric-icon">✅</span>
+        <span class="quick-metric-title">Verified</span>
+      </div>
+      <div class="quick-metric-value" id="safeCountMetric">0</div>
+      <div class="quick-metric-label">Safe Mails</div>
+      <div class="quick-metric-description">Legitimate emails</div>
+    </div>
+
+    <div class="quick-metric-card">
+      <div class="quick-metric-header">
+        <span class="quick-metric-icon">🌐</span>
+        <span class="quick-metric-title">External</span>
+      </div>
+      <div class="quick-metric-value" id="externalCount">0</div>
+      <div class="quick-metric-label">Recipients</div>
+      <div class="quick-metric-description">External tracking</div>
+    </div>
+
+    <div class="quick-metric-card">
+      <div class="quick-metric-header">
+        <span class="quick-metric-icon">📊</span>
+        <span class="quick-metric-title">Accuracy</span>
+      </div>
+      <div class="quick-metric-value" id="confidenceScore">85%</div>
+      <div class="quick-metric-label">Confidence</div>
+      <div class="quick-metric-description">Detection rate</div>
+    </div>
   </div>
 
   <div class="main-layout">
@@ -691,9 +917,66 @@
       document.getElementById('safeCount').textContent = stats.safe || 0;
       document.getElementById('reviewCount').textContent = stats.review || 0;
       document.getElementById('anomCount').textContent = stats.anomalous || 0;
+
+      // Update Status Banner and Quick Metrics
+      updateStatusBannerAndMetrics(stats);
     } catch (error) {
       console.error('Error loading stats:', error);
     }
+  }
+
+  // Update Status Banner and Quick Metrics Grid
+  function updateStatusBannerAndMetrics(stats) {
+    // Update total incidents in status banner
+    document.getElementById('totalIncidentsStatus').textContent = stats.total || 0;
+
+    // Update last threat time (if available from incidents)
+    updateLastThreatTime();
+
+    // Update Quick Metrics Grid
+    const blockedCount = stats.blocked || 0;
+    const safeCount = stats.safe || 0;
+    const anomalousCount = stats.anomalous || 0;
+    const externalCount = stats.external || 0;
+    const confidence = stats.avg_confidence || 85;
+
+    document.getElementById('blockedCount').textContent = blockedCount;
+    document.getElementById('safeCountMetric').textContent = safeCount;
+    document.getElementById('externalCount').textContent = externalCount;
+    document.getElementById('confidenceScore').textContent = Math.round(confidence) + '%';
+  }
+
+  // Calculate and update "Last threat detected" time
+  function updateLastThreatTime() {
+    if (!incidents || incidents.length === 0) {
+      document.getElementById('lastThreatTime').textContent = 'no threats yet';
+      return;
+    }
+
+    // Find the most recent incident
+    const sortedIncidents = [...incidents].sort((a, b) =>
+      new Date(b.captured_at) - new Date(a.captured_at)
+    );
+
+    if (sortedIncidents.length === 0) return;
+
+    const lastIncident = sortedIncidents[0];
+    const lastTime = new Date(lastIncident.captured_at);
+    const now = new Date();
+    const diffMs = now - lastTime;
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+
+    let timeText = 'just now';
+    if (diffSeconds > 60) {
+      timeText = diffMinutes === 1 ? '1 minute ago' : `${diffMinutes} minutes ago`;
+    }
+    if (diffMinutes > 60) {
+      timeText = diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
+    }
+
+    document.getElementById('lastThreatTime').textContent = timeText;
   }
 
   function renderIncidents() {
@@ -708,6 +991,9 @@
       document.getElementById('chatInputArea').style.display = 'none';
       return;
     }
+
+    // Update last threat time when rendering incidents
+    updateLastThreatTime();
 
     listEl.innerHTML = incidents.map(inc => {
       const captured = new Date(inc.captured_at).toLocaleTimeString();

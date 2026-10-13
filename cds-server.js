@@ -252,24 +252,46 @@ app.get('/api/incidents/:id', (req, res) => {
 
 // API: Get dashboard stats
 app.get('/api/stats', (req, res) => {
-  db.all(`
-    SELECT risk_level, COUNT(*) as count FROM incidents
-    GROUP BY risk_level
-  `, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-
+  Promise.all([
+    // Risk level distribution
+    new Promise((resolve) => {
+      db.all(`
+        SELECT risk_level, COUNT(*) as count FROM incidents
+        GROUP BY risk_level
+      `, (err, rows) => resolve(rows || []));
+    }),
+    // Blocked incidents (status = 'block')
+    new Promise((resolve) => {
+      db.get(`
+        SELECT COUNT(*) as count FROM incidents WHERE status = 'block'
+      `, (err, row) => resolve(row?.count || 0));
+    }),
+    // External recipients
+    new Promise((resolve) => {
+      db.get(`
+        SELECT COUNT(*) as count FROM incidents
+        WHERE to_address LIKE '%@%' AND to_address NOT LIKE '%kloudeai%' AND to_address NOT LIKE '%@hospital.com%'
+      `, (err, row) => resolve(row?.count || 0));
+    }),
+    // Average confidence (especially for anomalous)
+    new Promise((resolve) => {
+      db.get(`
+        SELECT ROUND(AVG(confidence), 0) as avg FROM incidents WHERE risk_level = 'anomalous'
+      `, (err, row) => resolve(row?.avg || 85));
+    })
+  ]).then(([riskRows, blocked, external, avgConfidence]) => {
     let stats = {
       total: 0,
       safe: 0,
       review: 0,
       anomalous: 0,
+      blocked: blocked,
+      external: external,
+      avg_confidence: avgConfidence,
       m365_connected: m365Initialized
     };
 
-    rows.forEach(row => {
+    riskRows.forEach(row => {
       stats[row.risk_level] = row.count;
       stats.total += row.count;
     });
