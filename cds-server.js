@@ -108,30 +108,58 @@ async function getM365Token() {
 
 async function initializeM365Client() {
   try {
+    console.log('\n[M365 INIT] Checking credentials...');
+    const tenantId = process.env.AZURE_TENANT_ID;
+    const clientId = process.env.AZURE_CLIENT_ID;
+    const clientSecret = process.env.AZURE_CLIENT_SECRET;
+
+    if (!tenantId) console.warn('[M365 INIT] ✗ AZURE_TENANT_ID not set');
+    if (!clientId) console.warn('[M365 INIT] ✗ AZURE_CLIENT_ID not set');
+    if (!clientSecret) console.warn('[M365 INIT] ✗ AZURE_CLIENT_SECRET not set');
+
+    if (!tenantId || !clientId || !clientSecret) {
+      console.error('[M365 INIT] ✗ M365 credentials incomplete. Cannot initialize.');
+      return false;
+    }
+
     const token = await getM365Token();
     if (token) {
-      console.log('✓ M365 Graph Client initialized successfully');
+      console.log('[M365 INIT] ✓ M365 Graph Client initialized successfully');
+      console.log('[M365 INIT] ✓ Token obtained (expires in', Math.round((m365TokenExpiry - Date.now()) / 1000), 'seconds)');
       m365Initialized = true;
       return true;
     }
+    console.error('[M365 INIT] ✗ Failed to obtain token');
     return false;
   } catch (error) {
-    console.error('✗ Failed to initialize M365 Graph Client:', error.message);
+    console.error('[M365 INIT] ✗ Initialization error:', error.message);
     return false;
   }
 }
 
-// PHI Detection Engine
+// PHI Detection Engine - ENHANCED with more comprehensive patterns
 function detectPHI(emailBody, emailSubject) {
   const patterns = {
-    patient_name: /(?:patient|subject|name)[\s:]*([a-z][a-z]+ [a-z][a-z]+)/i,
-    patient_id: /(?:patient\s*id|mrn|medical\s*record|admission)[\s:]*([0-9]{4,})/i,
-    ssn: /(?:ssn|social\s*security|aadhar|pan)[\s:]*([0-9\-]+)/i,
-    diagnosis: /(?:diagnosis|condition|disease|covid|diabetes|cancer)[\s:]*([a-z][a-z\s]+)/i,
-    medication: /(?:medication|prescribed|drug|medicine|tablet)[\s:]*([a-z][a-z\s]+)/i,
-    insurance_details: /(?:insurance|policy|claim)[\s:]*([a-z0-9\-]+)/i,
-    phone: /(?:phone|contact|mobile)[\s:]*(\+?[\d\s\-()]{10,})/i,
-    hospital_id: /(?:hospital|ward|bed|room)[\s:]*(?:id|no|number)[\s:]*([a-z0-9\-]+)/i
+    // Medical Data
+    patient_name: /(?:patient|subject|name|mr\.|mrs\.|mr|ms\.)[\s:]+([a-z][a-z]+ [a-z][a-z]+)/i,
+    patient_id: /(?:patient\s*id|mrn|medical\s*record|admission|case\s*no)[\s:]*([0-9]{4,})/i,
+    ssn: /(?:ssn|social\s*security|aadhar|aadhaar|pan|national\s*id)[\s:]*([0-9\-]+)/i,
+    diagnosis: /(?:diagnosis|condition|disease|presenting|chief\s*complaint)[\s:]*([a-z][a-z\s]+)/i,
+    medication: /(?:medication|prescribed|drug|medicine|tablet|dosage|treatment)[\s:]*([a-z][a-z\s]+)/i,
+    insurance_details: /(?:insurance|policy|claim|coverage|premium)[\s:]*([a-z0-9\-]+)/i,
+    phone: /(?:phone|contact|mobile|telephone)[\s:]*(\+?[\d\s\-()]{10,})/i,
+    hospital_id: /(?:hospital|ward|bed|room|icu|unit)[\s:]*(?:id|no|number)[\s:]*([a-z0-9\-]+)/i,
+    // Employee/Salary Data
+    employee_info: /(?:employee|staff|hr|human\s*resource)[\s:]*(?:id|number|code)[\s:]*([a-z0-9\-]{4,})/i,
+    salary: /(?:salary|wage|compensation|annual|ctc|salary\s*package)[\s:]*(?:rs|inr|\$|usd)?[\s]*([0-9,]+)/i,
+    bank_account: /(?:bank|account|routing|swift|iban)[\s:]*(?:number|no|code)[\s:]*([a-z0-9\-]{8,})/i,
+    // DOB and Age
+    dob: /(?:date\s*of\s*birth|dob|birthday)[\s:]*([0-9]{1,2}[\/-][0-9]{1,2}[\/-][0-9]{2,4})/i,
+    age: /(?:age|years?\s*old)[\s:]*([0-9]{1,3})/i,
+    // Medical conditions (spelled out)
+    medical_condition: /(?:diabetes|hypertension|cancer|covid|covid-19|tuberculosis|hiv|aids|asthma|cardiac|heart|stroke|seizure|epilepsy)/i,
+    // Test results/lab values
+    lab_result: /(?:bmi|blood\s*pressure|bp|glucose|cholesterol|hemoglobin|sgpt|sgot)[\s:]*([0-9.]+)/i
   };
 
   const fullText = `${emailSubject} ${emailBody}`.toLowerCase();
@@ -141,12 +169,14 @@ function detectPHI(emailBody, emailSubject) {
   for (const [type, pattern] of Object.entries(patterns)) {
     if (pattern.test(fullText)) {
       detectedTypes.push(type);
-      confidence += 12;
+      confidence += 10; // 10% per match
     }
   }
 
-  if (!emailBody.match(/@hospital\.com|@internal\.|@m365x92216622\.onmicrosoft\.com/i)) {
-    confidence += 25;
+  // CRITICAL: Check for external domain indicators in body
+  const hasInternalDomain = emailBody.match(/@hospital\.com|@internal\.|@m365x92216622\.onmicrosoft\.com/i);
+  if (!hasInternalDomain) {
+    confidence += 20; // Additional 20% if no internal domain markers
   }
 
   confidence = Math.min(confidence, 99);
@@ -517,23 +547,29 @@ app.post('/api/incidents/:id/release-email', (req, res) => {
         return;
       }
 
-      // Get fresh M365 token
+      // CRITICAL FIX: Try to get M365 token regardless of m365Initialized flag
+      // This allows RELEASE to work even if initialization failed initially
       let graphResult = { success: false };
-      if (m365Initialized) {
-        try {
-          const token = await getM365Token();
-          if (token) {
-            graphResult = await sendEmailViaGraph(
-              token,
-              incident.from_address,
-              incident.to_address,
-              incident.subject,
-              incident.raw_body || incident.subject
-            );
-          }
-        } catch (tokenErr) {
-          console.error('[RELEASE] Error getting M365 token:', tokenErr.message);
+      try {
+        console.log(`[RELEASE] Processing incident #${incidentId} from ${incident.from_address} to ${incident.to_address}`);
+        const token = await getM365Token();
+        if (token) {
+          console.log('[RELEASE] ✓ Token obtained, attempting Graph API send...');
+          graphResult = await sendEmailViaGraph(
+            token,
+            incident.from_address,
+            incident.to_address,
+            incident.subject,
+            incident.raw_body || incident.subject
+          );
+          console.log(`[RELEASE] Graph API result: ${JSON.stringify(graphResult)}`);
+        } else {
+          console.error('[RELEASE] ✗ Failed to obtain Graph API token - check Azure credentials');
+          graphResult = { success: false, error: 'Failed to obtain M365 token - check Azure credentials in Railway environment' };
         }
+      } catch (tokenErr) {
+        console.error('[RELEASE] Error getting M365 token:', tokenErr.message);
+        graphResult = { success: false, error: tokenErr.message };
       }
 
       // Update incident status to released
@@ -775,45 +811,51 @@ app.post('/api/ingest-email', (req, res) => {
 
 // ENHANCED: Function to monitor all sent emails to external recipients
 async function syncEmailsFromM365() {
-  if (!m365Initialized) {
-    console.log('M365 not initialized, skipping sync');
-    return;
-  }
-
   try {
-    console.log('📧 Starting comprehensive M365 email sync (inbox + sent items)...');
+    console.log('\n[M365 SYNC] Starting comprehensive email sync...');
 
-    const token = await getM365Token();
+    // CRITICAL FIX: Try to get token regardless of m365Initialized flag
+    // This allows sync to work even if initialization failed initially
+    let token = await getM365Token();
+
     if (!token) {
-      console.error('Failed to get M365 token');
+      console.error('[M365 SYNC] ✗ Failed to obtain Graph API token');
+      console.error('[M365 SYNC] Check that AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET are set');
       return;
     }
 
+    console.log('[M365 SYNC] ✓ Token obtained successfully');
+
     let totalProcessed = 0;
+    let totalScanned = 0;
 
     // PART 1: Monitor specific admin mailbox (existing logic)
     const adminMailbox = process.env.MAILBOX_EMAIL;
     if (adminMailbox) {
-      console.log(`📬 Scanning admin mailbox: ${adminMailbox}`);
+      console.log(`[M365 SYNC] Scanning admin mailbox: ${adminMailbox}`);
       const adminEmails = await getUserSentEmails(token, adminMailbox);
+      console.log(`[M365 SYNC] Found ${adminEmails.length} emails in admin mailbox (last 24hrs)`);
 
       for (const email of adminEmails) {
         if (!email.body || !email.body.content) continue;
+        totalScanned++;
 
         const to = email.toRecipients?.map(r => r.emailAddress.address).join(', ') || 'unknown';
+        const isExt = isExternalRecipient(to);
 
         // Only capture if sent to external recipients
-        if (isExternalRecipient(to)) {
+        if (isExt) {
           const phi = detectPHI(email.body.content, email.subject);
           if (phi.detected) {
-            const isExt = isExternalRecipient(to);
             const risk = stratifyRisk(phi.detected, phi.confidence, isExt);
             const comp = mapCompliance(risk, phi.phiTypes);
 
+            console.log(`[M365 SYNC] ➜ Detected: ${email.from?.emailAddress?.address} → ${to} | Risk: ${risk} (${phi.confidence}%) | PHI: ${phi.phiTypes.join(', ')}`);
+
             db.run(
               `INSERT OR IGNORE INTO incidents
-               (email_id, from_address, to_address, subject, phi_types, risk_level, dpdp_article, nabh_standard, confidence, raw_body)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               (email_id, from_address, to_address, subject, phi_types, risk_level, dpdp_article, nabh_standard, confidence, raw_body, email_source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sync')`,
               [
                 email.id,
                 email.from?.emailAddress?.address || 'unknown',
@@ -827,7 +869,12 @@ async function syncEmailsFromM365() {
                 email.body.content.substring(0, 5000)
               ],
               (err) => {
-                if (!err) totalProcessed++;
+                if (err) {
+                  console.error(`[M365 SYNC] Database error: ${err.message}`);
+                } else {
+                  totalProcessed++;
+                  console.log(`[M365 SYNC]   ✓ Incident created`);
+                }
               }
             );
           }
@@ -836,33 +883,39 @@ async function syncEmailsFromM365() {
     }
 
     // PART 2: ENHANCED - Monitor all organization users' sent items
-    console.log('👥 Fetching organization users...');
+    console.log('[M365 SYNC] Fetching organization users...');
     const users = await getOrganizationUsers(token);
-    console.log(`Found ${users.length} users in organization`);
+    console.log(`[M365 SYNC] Found ${users.length} users in organization`);
 
     for (const user of users) {
       try {
         const sentEmails = await getUserSentEmails(token, user.userPrincipalName);
+        if (sentEmails.length > 0) {
+          console.log(`[M365 SYNC]   ${user.displayName || user.userPrincipalName}: ${sentEmails.length} emails`);
+        }
 
         for (const email of sentEmails) {
           if (!email.body || !email.body.content) continue;
+          totalScanned++;
 
           const to = email.toRecipients?.map(r => r.emailAddress.address).join(', ') || 'unknown';
+          const isExt = isExternalRecipient(to);
 
           // Only capture emails sent to EXTERNAL recipients
-          if (isExternalRecipient(to)) {
+          if (isExt) {
             const phi = detectPHI(email.body.content, email.subject);
 
             // Flag ALL PHI in external emails, not just high confidence
             if (phi.detected) {
-              const isExt = true; // Always external
               const risk = stratifyRisk(phi.detected, phi.confidence, isExt);
               const comp = mapCompliance(risk, phi.phiTypes);
 
+              console.log(`[M365 SYNC] ➜ Detected: ${user.userPrincipalName} → ${to} | Risk: ${risk} (${phi.confidence}%) | PHI: ${phi.phiTypes.join(', ')}`);
+
               db.run(
                 `INSERT OR IGNORE INTO incidents
-                 (email_id, from_address, to_address, subject, phi_types, risk_level, dpdp_article, nabh_standard, confidence, raw_body)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 (email_id, from_address, to_address, subject, phi_types, risk_level, dpdp_article, nabh_standard, confidence, raw_body, email_source)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sync')`,
                 [
                   `${user.userPrincipalName}-${email.id}`,
                   email.from?.emailAddress?.address || user.userPrincipalName,
@@ -876,14 +929,19 @@ async function syncEmailsFromM365() {
                   email.body.content.substring(0, 5000)
                 ],
                 (err) => {
-                  if (!err) totalProcessed++;
+                  if (err) {
+                    console.error(`[M365 SYNC] Database error: ${err.message}`);
+                  } else {
+                    totalProcessed++;
+                    console.log(`[M365 SYNC]   ✓ Incident created`);
+                  }
                 }
               );
             }
           }
         }
       } catch (userError) {
-        console.log(`⚠️ Could not access emails for ${user.userPrincipalName}: ${userError.message}`);
+        console.log(`[M365 SYNC] ⚠️  Could not access emails for ${user.userPrincipalName}: ${userError.message}`);
       }
     }
 
@@ -893,9 +951,12 @@ async function syncEmailsFromM365() {
       [totalProcessed]
     );
 
-    console.log(`✓ Comprehensive M365 sync complete: ${totalProcessed} emails with PHI detected`);
+    console.log(`\n[M365 SYNC] ✓ Sync Complete:`);
+    console.log(`[M365 SYNC]   - Emails scanned: ${totalScanned}`);
+    console.log(`[M365 SYNC]   - PHI incidents detected: ${totalProcessed}`);
+    console.log(`[M365 SYNC]   - Timestamp: ${new Date().toISOString()}\n`);
   } catch (error) {
-    console.error('✗ Error syncing emails from M365:', error.message);
+    console.error('[M365 SYNC] ✗ Error syncing emails from M365:', error.message);
     db.run(
       `INSERT INTO sync_status (last_sync, status)
        VALUES (datetime('now'), 'error')`
@@ -935,7 +996,66 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// DIAGNOSTIC: Test Graph API credentials
+// DIAGNOSTIC: Comprehensive system health check
+app.get('/api/diagnostic/system-health', async (req, res) => {
+  console.log('[DIAGNOSTIC] Running comprehensive system health check...');
+
+  const credentials = {
+    AZURE_TENANT_ID: process.env.AZURE_TENANT_ID ? '✓ Set' : '✗ Missing',
+    AZURE_CLIENT_ID: process.env.AZURE_CLIENT_ID ? '✓ Set' : '✗ Missing',
+    AZURE_CLIENT_SECRET: process.env.AZURE_CLIENT_SECRET ? '✓ Set' : '✗ Missing',
+    MAILBOX_EMAIL: process.env.MAILBOX_EMAIL || 'Not configured'
+  };
+
+  try {
+    const token = await getM365Token();
+
+    // Get database stats
+    let dbStats = { total: 0, safe: 0, review: 0, anomalous: 0 };
+    await new Promise((resolve) => {
+      db.all("SELECT risk_level, COUNT(*) as count FROM incidents GROUP BY risk_level", (err, rows) => {
+        if (rows) {
+          rows.forEach(row => {
+            dbStats[row.risk_level] = row.count;
+            dbStats.total += row.count;
+          });
+        }
+        resolve();
+      });
+    });
+
+    const health = {
+      timestamp: new Date().toISOString(),
+      status: token ? 'READY' : 'INCOMPLETE',
+      credentials: credentials,
+      m365: {
+        initialized: m365Initialized,
+        token_available: !!token,
+        token_valid_until: token ? new Date(m365TokenExpiry).toISOString() : null
+      },
+      database: {
+        ...dbStats,
+        status: 'Connected'
+      }
+    };
+
+    if (!token) {
+      health.status = 'MISSING_CREDENTIALS';
+      health.error = 'Azure credentials not configured or invalid. Check AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET in Railway environment.';
+    }
+
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      error: error.message,
+      credentials: credentials,
+      m365_initialized: m365Initialized
+    });
+  }
+});
+
+// DIAGNOSTIC: Test Graph API credentials (legacy endpoint)
 app.get('/api/diagnostic/graph-test', async (req, res) => {
   console.log('[DIAGNOSTIC] Testing Graph API credentials...');
 
