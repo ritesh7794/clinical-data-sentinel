@@ -379,6 +379,123 @@ app.get('/api/sync-status', (req, res) => {
   });
 });
 
+// ============================================
+// 🔐 TRANSPORT RULE WEBHOOK ENDPOINTS
+// ============================================
+
+// WEBHOOK: Transport rule calls this to check if email is safe before sending externally
+app.post('/api/webhook/check-email-safety', (req, res) => {
+  const { from, to, subject, body, messageId } = req.body;
+
+  if (!from || !to || !subject || !body) {
+    return res.json({ allow: true, error: 'Missing fields' });
+  }
+
+  // Detect PHI
+  const phiAnalysis = detectPHI(body, subject);
+  const isExternal = isExternalRecipient(to);
+  const riskLevel = stratifyRisk(phiAnalysis.detected, phiAnalysis.confidence, isExternal);
+  const compliance = mapCompliance(riskLevel, phiAnalysis.phiTypes);
+
+  // Create incident record
+  db.run(
+    `INSERT INTO incidents
+     (email_id, from_address, to_address, subject, phi_types, risk_level,
+      dpdp_article, nabh_standard, confidence, raw_body, status, email_source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      messageId || `webhook-${Date.now()}`,
+      from,
+      to,
+      subject,
+      phiAnalysis.phiTypes.join(', '),
+      riskLevel,
+      compliance.dpdp,
+      compliance.nabh,
+      phiAnalysis.confidence,
+      body,
+      'transport_hold',
+      'transport_rule'
+    ],
+    function(err) {
+      if (err && err.message.includes('UNIQUE')) {
+        // Email already processed
+        return res.json({ allow: true, incident_id: null });
+      }
+      if (err) {
+        console.error('Error creating incident:', err);
+        return res.json({ allow: true, error: err.message });
+      }
+
+      // CRITICAL: Only allow if SAFE
+      const allow = riskLevel === 'safe';
+      const action = allow ? '✅ ALLOWED' : '⏸️ HELD FOR ADMIN REVIEW';
+
+      console.log(`[TRANSPORT WEBHOOK] ${action} - ${subject} (Risk: ${riskLevel}, Confidence: ${phiAnalysis.confidence}%)`);
+
+      res.json({
+        allow: allow,
+        incident_id: this.lastID,
+        risk_level: riskLevel,
+        confidence: phiAnalysis.confidence,
+        phi_detected: phiAnalysis.phiTypes,
+        action: action,
+        timestamp: new Date()
+      });
+    }
+  );
+});
+
+// RELEASE: Admin approves the held email to be sent externally
+app.post('/api/incidents/:id/release-email', (req, res) => {
+  const incidentId = req.params.id;
+
+  db.run(
+    'UPDATE incidents SET status = ? WHERE id = ?',
+    ['released', incidentId],
+    (err) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      console.log(`[EMAIL RELEASED] Incident #${incidentId} - Admin approved, email can now be sent`);
+
+      res.json({
+        success: true,
+        status: 'released',
+        message: '🚀 Email RELEASED - Will be sent to external recipient now',
+        incident_id: incidentId
+      });
+    }
+  );
+});
+
+// REJECT: Admin rejects the email (do NOT send externally)
+app.post('/api/incidents/:id/reject-email', (req, res) => {
+  const incidentId = req.params.id;
+
+  db.run(
+    'UPDATE incidents SET status = ? WHERE id = ?',
+    ['rejected', incidentId],
+    (err) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      console.log(`[EMAIL REJECTED] Incident #${incidentId} - Admin blocked, email will NOT be sent`);
+
+      res.json({
+        success: true,
+        status: 'rejected',
+        message: '❌ Email REJECTED - Will NOT be sent to external recipient',
+        incident_id: incidentId
+      });
+    }
+  );
+});
+
 // API: Submit action on incident
 app.post('/api/incidents/:id/action', (req, res) => {
   const { action, reason } = req.body;

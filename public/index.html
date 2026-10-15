@@ -821,9 +821,18 @@
       </div>
 
       <div class="action-buttons" id="actionButtons" style="display: grid;">
-        <button class="action-btn approve" onclick="submitAction('approve')" id="approveBtn">✓ Approve</button>
-        <button class="action-btn review" onclick="submitAction('review')" id="reviewBtn">⚠ Review</button>
-        <button class="action-btn block" onclick="submitAction('block')" id="blockBtn">✕ Block</button>
+        <!-- Standard Detection Workflow Buttons -->
+        <div id="detectionButtons">
+          <button class="action-btn approve" onclick="submitAction('approve')" id="approveBtn">✓ Approve</button>
+          <button class="action-btn review" onclick="submitAction('review')" id="reviewBtn">⚠ Review</button>
+          <button class="action-btn block" onclick="submitAction('block')" id="blockBtn">✕ Block</button>
+        </div>
+
+        <!-- Transport Rule Hold Workflow Buttons -->
+        <div id="transportHoldButtons" style="display: none;">
+          <button class="action-btn approve" onclick="releaseEmail()" id="releaseBtn" style="background: linear-gradient(135deg, #34d399 0%, #10b981 100%); border-color: #059669;">✓ Release to Send</button>
+          <button class="action-btn block" onclick="rejectEmail()" id="rejectBtn" style="background: linear-gradient(135deg, #f87171 0%, #dc2626 100%); border-color: #991b1b;">✕ Reject (Don't Send)</button>
+        </div>
       </div>
 
       <div class="chat-input-area" id="chatInputArea" style="display: flex;">
@@ -1021,6 +1030,8 @@
     const compactDetails = document.getElementById('incidentDetailsCompact');
     const chatBox = document.getElementById('chatBox');
     const actionButtons = document.getElementById('actionButtons');
+    const detectionButtons = document.getElementById('detectionButtons');
+    const transportHoldButtons = document.getElementById('transportHoldButtons');
 
     // Show compact incident details
     document.getElementById('compactSubject').textContent = `📧 ${escapeHtml(selectedIncident.subject)}`;
@@ -1032,6 +1043,15 @@
     actionButtons.style.display = "grid";
     document.getElementById('chatInputArea').style.display = 'flex';
     document.getElementById('chatMessages').innerHTML = "";
+
+    // Show appropriate buttons based on incident status
+    if (selectedIncident.status === 'transport_hold') {
+      detectionButtons.style.display = 'none';
+      transportHoldButtons.style.display = 'grid';
+    } else {
+      detectionButtons.style.display = 'grid';
+      transportHoldButtons.style.display = 'none';
+    }
 
     // Initial AI analysis
     const analysis = getInitialAnalysis();
@@ -1136,6 +1156,69 @@
       loadIncidents();
     } catch (error) {
       addMessage('assistant', `Error submitting action: ${error.message}`);
+    } finally {
+      buttons.forEach(b => b.disabled = false);
+    }
+  }
+
+  // Transport Hold Workflow Functions
+  async function releaseEmail() {
+    const inc = selectedIncident;
+    const buttons = document.querySelectorAll('.action-btn');
+    buttons.forEach(b => b.disabled = true);
+
+    try {
+      const response = await fetch(`${API_BASE}/incidents/${inc.id}/release-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin: 'Portal Admin',
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        addMessage('assistant', `✅ RELEASED. Email with PHI (${inc.phi_types}) has been APPROVED for external delivery. Status: RELEASED. Exchange will now send the email outside the organization. Complete audit trail maintained per ${inc.dpdp_article}.`);
+        selectedIncident.status = 'released';
+        loadIncidents();
+      } else {
+        addMessage('assistant', `Error releasing email: ${result.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      addMessage('assistant', `Error releasing email: ${error.message}`);
+    } finally {
+      buttons.forEach(b => b.disabled = false);
+    }
+  }
+
+  async function rejectEmail() {
+    const inc = selectedIncident;
+    const buttons = document.querySelectorAll('.action-btn');
+    buttons.forEach(b => b.disabled = true);
+
+    try {
+      const response = await fetch(`${API_BASE}/incidents/${inc.id}/reject-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin: 'Portal Admin',
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        addMessage('assistant', `🚫 REJECTED. Email with PHI (${inc.phi_types}) has been BLOCKED. Status: REJECTED. The email will NOT be sent to external recipient. Sender has been notified. Violations: ${inc.dpdp_article}. Complete audit trail maintained.`);
+        selectedIncident.status = 'rejected';
+        loadIncidents();
+      } else {
+        addMessage('assistant', `Error rejecting email: ${result.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      addMessage('assistant', `Error rejecting email: ${error.message}`);
     } finally {
       buttons.forEach(b => b.disabled = false);
     }
