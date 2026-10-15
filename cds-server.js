@@ -986,6 +986,119 @@ app.delete('/api/incidents', (req, res) => {
   });
 });
 
+// API: Reset and seed database with test incidents
+app.post('/api/admin/reset-and-seed', (req, res) => {
+  console.log('[ADMIN] Reset and seed database requested');
+
+  // First, delete all existing incidents
+  db.run('DELETE FROM incidents', (err) => {
+    if (err) {
+      console.error('[ADMIN] Error clearing incidents:', err);
+      return res.status(500).json({ error: 'Failed to clear incidents' });
+    }
+
+    console.log('[ADMIN] ✓ Cleared all incidents');
+
+    // Test incidents with varied risk levels
+    const testIncidents = [
+      {
+        email_id: 'test-safe-001',
+        from: 'megan.brown@hospital.com',
+        to: 'support@vendor.com',
+        subject: 'Invoice Request',
+        phi_types: 'none',
+        risk_level: 'safe',
+        dpdp: 'Article 6',
+        nabh: 'Standard 1.4',
+        confidence: 25,
+        body: 'Hi, can you send me the invoice for last month services?',
+        status: 'safe_approved'
+      },
+      {
+        email_id: 'test-review-001',
+        from: 'records@hospital.com',
+        to: 'consultant@external-clinic.com',
+        subject: 'Lab Results Discussion',
+        phi_types: 'lab_result, patient_id',
+        risk_level: 'review',
+        dpdp: 'Article 8',
+        nabh: 'Standard 2.3',
+        confidence: 65,
+        body: 'Patient ID: HR-2024-001, Lab result: Glucose 145 mg/dL. Needs review before external consultation.',
+        status: 'pending_review'
+      },
+      {
+        email_id: 'test-anomalous-001',
+        from: 'pradeep@hospital.com',
+        to: 'jury-member@gmail.com',
+        subject: 'URGENT: Medical Records - John Smith',
+        phi_types: 'patient_id, diagnosis, medication, lab_result, dob',
+        risk_level: 'anomalous',
+        dpdp: 'Article 8',
+        nabh: 'Standard 3.1',
+        confidence: 99,
+        body: 'CONFIDENTIAL MEDICAL RECORD\nPatient: John Smith\nDate of Birth: 12/05/1968\nPatient ID: MRN-2024-87654\nDiagnosis: Type 2 Diabetes with hypertension\nMedication: Metformin 500mg twice daily, Lisinopril 10mg once daily\nLab Results: Glucose 145 mg/dL, Blood Pressure 138/88 mmHg',
+        status: 'hold_transport'
+      },
+      {
+        email_id: 'test-anomalous-002',
+        from: 'pradeep@hospital.com',
+        to: 'jury-member@gmail.com',
+        subject: 'Employee Salary Review',
+        phi_types: 'employee_info, salary, ssn',
+        risk_level: 'anomalous',
+        dpdp: 'Article 8',
+        nabh: 'Standard 3.1',
+        confidence: 85,
+        body: 'Employee ID: HR-EMP-2024-4567\nName: John Doe\nSSN: 123-45-6789\nSalary: ₹18,50,000 per annum\nDepartment: Finance',
+        status: 'hold_transport'
+      }
+    ];
+
+    let inserted = 0;
+    const createdIncidents = [];
+
+    testIncidents.forEach((inc) => {
+      db.run(
+        `INSERT INTO incidents
+         (email_id, from_address, to_address, subject, phi_types, risk_level,
+          dpdp_article, nabh_standard, confidence, raw_body, status, email_source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [inc.email_id, inc.from, inc.to, inc.subject, inc.phi_types, inc.risk_level,
+         inc.dpdp, inc.nabh, inc.confidence, inc.body, inc.status, 'test_seed'],
+        function(err) {
+          if (err) {
+            console.error(`[ADMIN] Error inserting ${inc.email_id}:`, err);
+          } else {
+            inserted++;
+            createdIncidents.push({
+              id: this.lastID,
+              subject: inc.subject,
+              risk_level: inc.risk_level,
+              confidence: inc.confidence
+            });
+            console.log(`[ADMIN] ✓ Created incident #${this.lastID}: ${inc.subject}`);
+          }
+
+          if (inserted === testIncidents.length) {
+            // All done, return results
+            db.all(`SELECT risk_level, COUNT(*) as count FROM incidents GROUP BY risk_level`, (err, dist) => {
+              console.log('[ADMIN] ✓ Database seeding complete');
+              res.json({
+                message: 'Database reset and seeded successfully',
+                incidents_created: inserted,
+                created: createdIncidents,
+                distribution: dist || [],
+                timestamp: new Date()
+              });
+            });
+          }
+        }
+      );
+    });
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
