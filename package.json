@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node cds-server.js",
     "dev": "nodemon cds-server.js",
-    "test-email": "node test-emails.js"
+    "test-email": "node test-emails.js",
+    "test-transport": "node test-transport-rule.js",
+    "test-demo": "echo 'Starting CDS server...' && npm start &"
   },
   "keywords": [
     "healthcare",

@@ -450,23 +450,57 @@ app.post('/api/webhook/check-email-safety', (req, res) => {
 app.post('/api/incidents/:id/release-email', (req, res) => {
   const incidentId = req.params.id;
 
-  db.run(
-    'UPDATE incidents SET status = ? WHERE id = ?',
-    ['released', incidentId],
-    (err) => {
+  // First, get incident details
+  db.get(
+    'SELECT * FROM incidents WHERE id = ?',
+    [incidentId],
+    async (err, incident) => {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
       }
 
-      console.log(`[EMAIL RELEASED] Incident #${incidentId} - Admin approved, email can now be sent`);
+      if (!incident) {
+        res.status(404).json({ error: 'Incident not found' });
+        return;
+      }
 
-      res.json({
-        success: true,
-        status: 'released',
-        message: '🚀 Email RELEASED - Will be sent to external recipient now',
-        incident_id: incidentId
-      });
+      // Update incident status to released
+      db.run(
+        'UPDATE incidents SET status = ? WHERE id = ?',
+        ['released', incidentId],
+        async (updateErr) => {
+          if (updateErr) {
+            res.status(500).json({ error: updateErr.message });
+            return;
+          }
+
+          // Log the action
+          db.run(
+            'INSERT INTO actions (incident_id, action, reason, taken_by) VALUES (?, ?, ?, ?)',
+            [incidentId, 'released', 'Admin approved for external delivery', 'Portal Admin'],
+            (logErr) => {
+              if (logErr) console.error('Error logging action:', logErr);
+            }
+          );
+
+          console.log(`[EMAIL RELEASED] Incident #${incidentId} - From: ${incident.from_address}, To: ${incident.to_address}`);
+          console.log(`[M365 RELEASE] Email can now be delivered to external recipient`);
+
+          res.json({
+            success: true,
+            status: 'released',
+            message: `✅ APPROVED FOR DELIVERY\n\nEmail from ${incident.from_address} to ${incident.to_address} has been approved for external delivery.\n\nIn M365, the email will now proceed to external recipient.\nAudit trail recorded with timestamp.`,
+            incident_id: incidentId,
+            from: incident.from_address,
+            to: incident.to_address,
+            subject: incident.subject,
+            confidence: incident.confidence,
+            phi_types: incident.phi_types,
+            released_at: new Date().toISOString()
+          });
+        }
+      );
     }
   );
 });
@@ -475,23 +509,58 @@ app.post('/api/incidents/:id/release-email', (req, res) => {
 app.post('/api/incidents/:id/reject-email', (req, res) => {
   const incidentId = req.params.id;
 
-  db.run(
-    'UPDATE incidents SET status = ? WHERE id = ?',
-    ['rejected', incidentId],
-    (err) => {
+  // First, get incident details
+  db.get(
+    'SELECT * FROM incidents WHERE id = ?',
+    [incidentId],
+    (err, incident) => {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
       }
 
-      console.log(`[EMAIL REJECTED] Incident #${incidentId} - Admin blocked, email will NOT be sent`);
+      if (!incident) {
+        res.status(404).json({ error: 'Incident not found' });
+        return;
+      }
 
-      res.json({
-        success: true,
-        status: 'rejected',
-        message: '❌ Email REJECTED - Will NOT be sent to external recipient',
-        incident_id: incidentId
-      });
+      // Update incident status to rejected
+      db.run(
+        'UPDATE incidents SET status = ? WHERE id = ?',
+        ['rejected', incidentId],
+        (updateErr) => {
+          if (updateErr) {
+            res.status(500).json({ error: updateErr.message });
+            return;
+          }
+
+          // Log the action
+          db.run(
+            'INSERT INTO actions (incident_id, action, reason, taken_by) VALUES (?, ?, ?, ?)',
+            [incidentId, 'rejected', 'Admin blocked - Policy violation', 'Portal Admin'],
+            (logErr) => {
+              if (logErr) console.error('Error logging action:', logErr);
+            }
+          );
+
+          console.log(`[EMAIL REJECTED] Incident #${incidentId} - From: ${incident.from_address}, To: ${incident.to_address}`);
+          console.log(`[M365 BLOCK] Email will NOT be delivered to external recipient`);
+
+          res.json({
+            success: true,
+            status: 'rejected',
+            message: `🚫 BLOCKED - NOT SENT\n\nEmail from ${incident.from_address} to ${incident.to_address} has been blocked and will NOT be sent.\n\nReason: PHI detected (${incident.phi_types}) violates ${incident.dpdp_article}\nAudit trail recorded with timestamp.`,
+            incident_id: incidentId,
+            from: incident.from_address,
+            to: incident.to_address,
+            subject: incident.subject,
+            confidence: incident.confidence,
+            phi_types: incident.phi_types,
+            blocked_reason: `${incident.dpdp_article} violation`,
+            rejected_at: new Date().toISOString()
+          });
+        }
+      );
     }
   );
 });
