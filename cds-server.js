@@ -161,7 +161,9 @@ function detectPHI(emailBody, emailSubject) {
 // Risk Stratification
 function stratifyRisk(phiDetected, confidence, isExternal) {
   if (!phiDetected) return 'safe';
-  if (isExternal && confidence >= 85) return 'anomalous';
+  // External + PHI = anomalous (lower threshold)
+  if (isExternal && phiDetected) return 'anomalous';
+  // Internal + High confidence = review
   if (confidence >= 80) return 'review';
   return 'safe';
 }
@@ -449,6 +451,11 @@ app.post('/api/webhook/check-email-safety', (req, res) => {
 // Helper: Send email via Graph API
 async function sendEmailViaGraph(token, fromAddress, toAddress, subject, body) {
   try {
+    if (!token) {
+      console.error('[GRAPH SEND] No token provided');
+      return { success: false, error: 'No authentication token' };
+    }
+
     const message = {
       message: {
         subject: subject,
@@ -467,6 +474,8 @@ async function sendEmailViaGraph(token, fromAddress, toAddress, subject, body) {
       saveToSentItems: 'true'
     };
 
+    console.log(`[GRAPH SEND] Attempting to send from ${fromAddress} to ${toAddress}`);
+
     const response = await axios.post(
       `https://graph.microsoft.com/v1.0/users/${fromAddress}/sendMail`,
       message,
@@ -478,9 +487,13 @@ async function sendEmailViaGraph(token, fromAddress, toAddress, subject, body) {
       }
     );
 
+    console.log(`[GRAPH SEND SUCCESS] Status ${response.status}`);
     return { success: true, statusCode: response.status };
   } catch (error) {
-    console.error('Error sending email via Graph:', error.message);
+    console.error('[GRAPH SEND ERROR]', error.message);
+    if (error.response) {
+      console.error('[GRAPH SEND HTTP ERROR]', error.response.status, error.response.data);
+    }
     return { success: false, error: error.message };
   }
 }
@@ -920,6 +933,45 @@ app.get('/api/health', (req, res) => {
     m365_connected: m365Initialized,
     features: ['phi-detection', 'compliance-mapping', 'multi-mailbox-monitoring', 'analytics', 'action-tracking']
   });
+});
+
+// DIAGNOSTIC: Test Graph API credentials
+app.get('/api/diagnostic/graph-test', async (req, res) => {
+  console.log('[DIAGNOSTIC] Testing Graph API credentials...');
+
+  try {
+    const token = await getM365Token();
+    if (!token) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to get M365 token',
+        credentials: {
+          AZURE_TENANT_ID: process.env.AZURE_TENANT_ID ? '✓ Set' : '✗ Missing',
+          AZURE_CLIENT_ID: process.env.AZURE_CLIENT_ID ? '✓ Set' : '✗ Missing',
+          AZURE_CLIENT_SECRET: process.env.AZURE_CLIENT_SECRET ? '✓ Set' : '✗ Missing'
+        }
+      });
+    }
+
+    console.log('[DIAGNOSTIC] Token obtained successfully');
+    res.json({
+      success: true,
+      message: 'Graph API credentials are valid and working',
+      token_preview: token.substring(0, 20) + '...',
+      m365_initialized: m365Initialized
+    });
+  } catch (error) {
+    console.error('[DIAGNOSTIC] Graph test failed:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      credentials: {
+        AZURE_TENANT_ID: process.env.AZURE_TENANT_ID ? '✓ Set' : '✗ Missing',
+        AZURE_CLIENT_ID: process.env.AZURE_CLIENT_ID ? '✓ Set' : '✗ Missing',
+        AZURE_CLIENT_SECRET: process.env.AZURE_CLIENT_SECRET ? '✓ Set' : '✗ Missing'
+      }
+    });
+  }
 });
 
 // Start server
