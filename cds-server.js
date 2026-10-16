@@ -1432,6 +1432,38 @@ const server = app.listen(PORT, async () => {
 ╚════════════════════════════════════════════════════════════╝
   `);
 
+  // Auto-seed diverse demo data if database is empty
+  db.get('SELECT COUNT(*) as count FROM incidents', (err, row) => {
+    if (row && row.count === 0) {
+      console.log('[AUTO-SEED] Database empty - seeding diverse demo data...');
+      const now = new Date();
+      const safeEmails = [
+        { from: 'wellness@hospital.com', to: 'partner@company.com', subject: 'Wellness Program Update', phi_types: 'none', risk: 'safe', confidence: 98 },
+        { from: 'admin@hospital.com', to: 'partner2@company.com', subject: 'General Hospital Info', phi_types: 'none', risk: 'safe', confidence: 96 }
+      ];
+      const reviewEmails = [
+        { from: 'records@hospital.com', to: 'clinic@partner.com', subject: 'Lab Results Summary', phi_types: 'patient_name', risk: 'review', confidence: 72 },
+        { from: 'admin@hospital.com', to: 'manager@partner.com', subject: 'Clinical Summary Report', phi_types: 'diagnosis', risk: 'review', confidence: 65 }
+      ];
+      const anomEmails = [
+        { from: 'pradeep@hospital.com', to: 'external@unknown.com', subject: 'Patient Case MRN-2024', phi_types: 'MRN, patient_name, diagnosis', risk: 'anomalous', confidence: 89 },
+        { from: 'finance@hospital.com', to: 'vendor@company.com', subject: 'Salary Data Export', phi_types: 'salary, bank_account', risk: 'anomalous', confidence: 92 },
+        { from: 'records@hospital.com', to: 'insurance@external.com', subject: 'Patient Records - Aadhar', phi_types: 'Aadhar, insurance_policy', risk: 'anomalous', confidence: 87 }
+      ];
+
+      [...safeEmails, ...reviewEmails, ...anomEmails].forEach((email, idx) => {
+        const timestamp = new Date(now.getTime() - (9-idx)*120000).toISOString();
+        db.run(
+          'INSERT INTO incidents (email_id, from_address, to_address, subject, phi_types, risk_level, confidence, status, captured_at, email_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [`auto-seed-${idx}-${Date.now()}`, email.from, email.to, email.subject, email.phi_types, email.risk, email.confidence, 'pending', timestamp, 'auto_seed'],
+          (err) => {
+            if (!err) console.log(`[AUTO-SEED] ✓ ${email.subject}`);
+          }
+        );
+      });
+    }
+  });
+
   const m365Ready = await initializeM365Client();
 
   if (m365Ready) {
