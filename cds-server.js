@@ -1257,6 +1257,79 @@ app.get('/api/diagnostic/graph-test', async (req, res) => {
   }
 });
 
+// ADMIN: Seed database with demo data for jury presentation
+app.post('/api/admin/seed-demo-data', (req, res) => {
+  console.log('[SEED] Starting demo data insertion...');
+
+  const now = new Date();
+  const timestamps = [
+    now.getTime() - 900000,  // 15 min ago
+    now.getTime() - 600000,  // 10 min ago
+    now.getTime() - 480000,  // 8 min ago
+    now.getTime() - 300000,  // 5 min ago
+    now.getTime() - 120000,  // 2 min ago
+    now.getTime() - 60000,   // 1 min ago
+    now.getTime() - 30000    // 30 sec ago
+  ];
+
+  const testIncidents = [
+    { from: 'noreply@hospital.com', to: 'patient@gmail.com', subject: 'Your Appointment Reminder', phi_types: 'none', risk_level: 'safe', confidence: 95, status: 'released', action: 'approve', reason: 'Admin approved - No PHI' },
+    { from: 'wellness@hospital.com', to: 'subscribers@list.hospital.com', subject: 'October Health Tips - Flu Prevention', phi_types: 'none', risk_level: 'safe', confidence: 98, status: 'released', action: 'approve', reason: 'Health awareness content' },
+    { from: 'records@hospital.com', to: 'partner@clinic.com', subject: 'Patient Lab Results Summary', phi_types: 'patient_name, test_results', risk_level: 'review', confidence: 72, status: 'pending', action: null, reason: null },
+    { from: 'admin@hospital.com', to: 'manager@partner.com', subject: 'Quarterly Clinical Summary Report', phi_types: 'diagnosis, treatment_plan', risk_level: 'review', confidence: 65, status: 'pending', action: null, reason: null },
+    { from: 'pradeep@hospital.com', to: 'external@unknown.com', subject: 'URGENT: Patient Case MRN-2024-87654', phi_types: 'MRN, patient_name, diagnosis, medications', risk_level: 'anomalous', confidence: 89, status: 'rejected', action: 'reject', reason: 'DPDP Article 8 violation' },
+    { from: 'finance@hospital.com', to: 'outsider@vendor.com', subject: 'Salary & Benefits Data Export', phi_types: 'salary, bank_account, SSN', risk_level: 'anomalous', confidence: 92, status: 'rejected', action: 'reject', reason: 'Financial & bank data violation' },
+    { from: 'records@hospital.com', to: 'insurance@external.com', subject: 'Patient Records - Aadhar & Insurance Details', phi_types: 'Aadhar, insurance_policy, DOB, patient_name', risk_level: 'anomalous', confidence: 87, status: 'pending', action: null, reason: null }
+  ];
+
+  let inserted = 0;
+  let failed = 0;
+
+  testIncidents.forEach((inc, idx) => {
+    const timestamp = new Date(timestamps[idx]).toISOString();
+
+    db.run(
+      `INSERT INTO incidents
+       (email_id, from_address, to_address, subject, phi_types, risk_level, confidence, status, captured_at, email_source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [`demo-${idx}-${Date.now()}`, inc.from, inc.to, inc.subject, inc.phi_types, inc.risk_level, inc.confidence, inc.status, timestamp, 'demo_seed'],
+      function(err) {
+        if (err) {
+          console.error(`[SEED] Error inserting incident ${idx}:`, err.message);
+          failed++;
+        } else {
+          inserted++;
+          const incidentId = this.lastID;
+
+          if (inc.action) {
+            const actionTimestamp = new Date(timestamps[idx] + 30000).toISOString();
+            db.run(
+              `INSERT INTO actions (incident_id, action, reason, taken_by, taken_at)
+               VALUES (?, ?, ?, ?, ?)`,
+              [incidentId, inc.action, inc.reason, 'admin@hospital.com', actionTimestamp],
+              (err) => {
+                if (err) console.error('[SEED] Error inserting action:', err.message);
+                else console.log(`[SEED] ✓ ${inc.subject.substring(0, 40)}`);
+              }
+            );
+          }
+        }
+      }
+    );
+  });
+
+  setTimeout(() => {
+    res.json({
+      success: true,
+      message: `✅ Demo data seeded: ${inserted} incidents inserted`,
+      inserted: inserted,
+      failed: failed,
+      total: testIncidents.length,
+      instructions: 'Hard refresh the portal (Ctrl+Shift+R) to see the data'
+    });
+  }, 500);
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   console.log(`
