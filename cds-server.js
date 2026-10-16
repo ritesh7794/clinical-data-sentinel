@@ -282,9 +282,9 @@ app.get('/api/incidents/:id', (req, res) => {
   );
 });
 
-// API: Get dashboard stats
-app.get('/api/stats', (req, res) => {
-  Promise.all([
+// Helper function to get current stats (used by both GET and action endpoints)
+function getStatsPromise() {
+  return Promise.all([
     // Risk level distribution
     new Promise((resolve) => {
       db.all(`
@@ -296,6 +296,12 @@ app.get('/api/stats', (req, res) => {
     new Promise((resolve) => {
       db.get(`
         SELECT COUNT(*) as count FROM incidents WHERE status = 'block'
+      `, (err, row) => resolve(row?.count || 0));
+    }),
+    // Verified incidents (status = 'released')
+    new Promise((resolve) => {
+      db.get(`
+        SELECT COUNT(*) as count FROM incidents WHERE status = 'released'
       `, (err, row) => resolve(row?.count || 0));
     }),
     // External recipients
@@ -311,13 +317,19 @@ app.get('/api/stats', (req, res) => {
         SELECT ROUND(AVG(confidence), 0) as avg FROM incidents WHERE risk_level = 'anomalous'
       `, (err, row) => resolve(row?.avg || 85));
     })
-  ]).then(([riskRows, blocked, external, avgConfidence]) => {
+  ]);
+}
+
+// API: Get dashboard stats
+app.get('/api/stats', (req, res) => {
+  getStatsPromise().then(([riskRows, blocked, verified, external, avgConfidence]) => {
     let stats = {
       total: 0,
       safe: 0,
       review: 0,
       anomalous: 0,
       blocked: blocked,
+      verified: verified,
       external: external,
       avg_confidence: avgConfidence,
       m365_connected: m365Initialized
@@ -602,19 +614,38 @@ app.post('/api/incidents/:id/release-email', (req, res) => {
           console.log(`[EMAIL RELEASED] Incident #${incidentId} - From: ${incident.from_address}, To: ${incident.to_address}`);
           console.log(`[M365 DELIVERY] ${deliveryStatus}`);
 
-          res.json({
-            success: true,
-            status: 'released',
-            graph_status: graphResult.success ? 'sent' : 'pending',
-            message: `✅ APPROVED FOR DELIVERY\n\nEmail from ${incident.from_address} to ${incident.to_address} has been approved.\n\n${deliveryStatus}\n\nCheck M365 Message Trace to confirm delivery (may take 1-2 minutes).\nAudit trail recorded with timestamp.`,
-            incident_id: incidentId,
-            from: incident.from_address,
-            to: incident.to_address,
-            subject: incident.subject,
-            confidence: incident.confidence,
-            phi_types: incident.phi_types,
-            released_at: new Date().toISOString(),
-            delivery_method: 'graph_api'
+          // Fetch updated stats to return with response
+          getStatsPromise().then(([riskRows, blocked, verified, external, avgConfidence]) => {
+            let stats = {
+              total: 0,
+              safe: 0,
+              review: 0,
+              anomalous: 0,
+              blocked: blocked,
+              verified: verified,
+              external: external,
+              avg_confidence: avgConfidence
+            };
+            riskRows.forEach(row => {
+              stats[row.risk_level] = row.count;
+              stats.total += row.count;
+            });
+
+            res.json({
+              success: true,
+              status: 'released',
+              graph_status: graphResult.success ? 'sent' : 'pending',
+              message: `✅ APPROVED FOR DELIVERY\n\nEmail from ${incident.from_address} to ${incident.to_address} has been approved.\n\n${deliveryStatus}\n\nCheck M365 Message Trace to confirm delivery (may take 1-2 minutes).\nAudit trail recorded with timestamp.`,
+              incident_id: incidentId,
+              from: incident.from_address,
+              to: incident.to_address,
+              subject: incident.subject,
+              confidence: incident.confidence,
+              phi_types: incident.phi_types,
+              released_at: new Date().toISOString(),
+              delivery_method: 'graph_api',
+              updated_stats: stats
+            });
           });
         }
       );
@@ -687,19 +718,38 @@ app.post('/api/incidents/:id/reject-email', (req, res) => {
           console.log(`[EMAIL REJECTED] Incident #${incidentId} - From: ${incident.from_address}, To: ${incident.to_address}`);
           console.log(`[M365 BLOCK VERIFIED] Email will NOT be delivered - Check Message Trace for Status=Failed`);
 
-          res.json({
-            success: true,
-            status: 'rejected',
-            block_verified: traceVerification.verified,
-            message: `🚫 BLOCKED - NOT SENT\n\nEmail from ${incident.from_address} to ${incident.to_address} has been confirmed as BLOCKED.\n\nReason: PHI detected (${incident.phi_types}) violates ${incident.dpdp_article}\n\n📋 To verify in M365:\n1. Open Exchange Admin Center\n2. Go to Message Trace\n3. Search for email from: ${incident.from_address} to: ${incident.to_address}\n4. Status should show: FAILED (ErrorType: TransportRuleReject)\n\nAudit trail recorded with timestamp.`,
-            incident_id: incidentId,
-            from: incident.from_address,
-            to: incident.to_address,
-            subject: incident.subject,
-            confidence: incident.confidence,
-            phi_types: incident.phi_types,
-            blocked_reason: `${incident.dpdp_article} violation`,
-            rejected_at: new Date().toISOString()
+          // Fetch updated stats to return with response
+          getStatsPromise().then(([riskRows, blocked, verified, external, avgConfidence]) => {
+            let stats = {
+              total: 0,
+              safe: 0,
+              review: 0,
+              anomalous: 0,
+              blocked: blocked,
+              verified: verified,
+              external: external,
+              avg_confidence: avgConfidence
+            };
+            riskRows.forEach(row => {
+              stats[row.risk_level] = row.count;
+              stats.total += row.count;
+            });
+
+            res.json({
+              success: true,
+              status: 'rejected',
+              block_verified: traceVerification.verified,
+              message: `🚫 BLOCKED - NOT SENT\n\nEmail from ${incident.from_address} to ${incident.to_address} has been confirmed as BLOCKED.\n\nReason: PHI detected (${incident.phi_types}) violates ${incident.dpdp_article}\n\n📋 To verify in M365:\n1. Open Exchange Admin Center\n2. Go to Message Trace\n3. Search for email from: ${incident.from_address} to: ${incident.to_address}\n4. Status should show: FAILED (ErrorType: TransportRuleReject)\n\nAudit trail recorded with timestamp.`,
+              incident_id: incidentId,
+              from: incident.from_address,
+              to: incident.to_address,
+              subject: incident.subject,
+              confidence: incident.confidence,
+              phi_types: incident.phi_types,
+              blocked_reason: `${incident.dpdp_article} violation`,
+              rejected_at: new Date().toISOString(),
+              updated_stats: stats
+            });
           });
         }
       );
