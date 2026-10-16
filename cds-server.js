@@ -427,6 +427,78 @@ app.get('/api/sync-status', (req, res) => {
 // 🔐 TRANSPORT RULE WEBHOOK ENDPOINTS
 // ============================================
 
+// WEBHOOK TEST: Show webhook status
+app.get('/api/webhook/check-email-safety', (req, res) => {
+  res.json({
+    status: 'WEBHOOK ACTIVE',
+    message: 'Webhook is running and ready to receive M365 Transport Rule POSTs',
+    endpoint: '/api/webhook/check-email-safety',
+    method: 'POST',
+    required_fields: ['from', 'to', 'subject', 'body', 'messageId'],
+    documentation: 'Configure M365 Transport Rule to POST emails to this endpoint'
+  });
+});
+
+// WEBHOOK TEST: Test with sample data
+app.post('/api/webhook/test-email', (req, res) => {
+  const testEmail = {
+    from: 'test@hospital.com',
+    to: 'external@company.com',
+    subject: 'TEST: Patient Medical Records',
+    body: 'This is a test email containing MRN: 2024-987654 and patient name John Doe',
+    messageId: `test-${Date.now()}`
+  };
+
+  // Call the webhook handler directly
+  const phiAnalysis = detectPHI(testEmail.body, testEmail.subject);
+  const isExternal = isExternalRecipient(testEmail.to);
+  const riskLevel = stratifyRisk(phiAnalysis.detected, phiAnalysis.confidence, isExternal);
+  const compliance = mapCompliance(riskLevel, phiAnalysis.phiTypes);
+
+  db.run(
+    `INSERT INTO incidents
+     (email_id, from_address, to_address, subject, phi_types, risk_level,
+      dpdp_article, nabh_standard, confidence, raw_body, status, email_source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      testEmail.messageId,
+      testEmail.from,
+      testEmail.to,
+      testEmail.subject,
+      phiAnalysis.phiTypes.join(', '),
+      riskLevel,
+      compliance.dpdp,
+      compliance.nabh,
+      phiAnalysis.confidence,
+      testEmail.body,
+      'transport_hold',
+      'webhook_test'
+    ],
+    function(err) {
+      if (err) {
+        console.error('Error creating test incident:', err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      const allow = riskLevel === 'safe';
+      console.log(`[WEBHOOK TEST] Test email captured - Risk: ${riskLevel}, Confidence: ${phiAnalysis.confidence}%`);
+
+      res.json({
+        success: true,
+        message: '✅ Test email captured successfully',
+        incident_id: this.lastID,
+        email: testEmail,
+        analysis: {
+          risk_level: riskLevel,
+          confidence: phiAnalysis.confidence,
+          phi_types: phiAnalysis.phiTypes,
+          allow: allow
+        }
+      });
+    }
+  );
+});
+
 // WEBHOOK: Transport rule calls this to check if email is safe before sending externally
 app.post('/api/webhook/check-email-safety', (req, res) => {
   const { from, to, subject, body, messageId } = req.body;
