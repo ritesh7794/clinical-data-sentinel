@@ -601,7 +601,7 @@ app.post('/api/incidents/:id/release-email', (req, res) => {
 
           db.run(
             'INSERT INTO actions (incident_id, action, reason, taken_by) VALUES (?, ?, ?, ?)',
-            [incidentId, 'released', actionReason, 'Portal Admin'],
+            [incidentId, 'approve', actionReason, 'Portal Admin'],
             (logErr) => {
               if (logErr) console.error('Error logging action:', logErr);
             }
@@ -709,7 +709,7 @@ app.post('/api/incidents/:id/reject-email', (req, res) => {
 
           db.run(
             'INSERT INTO actions (incident_id, action, reason, taken_by) VALUES (?, ?, ?, ?)',
-            [incidentId, 'rejected', blockReason, 'Portal Admin'],
+            [incidentId, 'reject', blockReason, 'Portal Admin'],
             (logErr) => {
               if (logErr) console.error('Error logging action:', logErr);
             }
