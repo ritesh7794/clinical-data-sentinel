@@ -719,7 +719,8 @@
   </div>
 
   <div id="setupBanner" class="setup-banner" style="display: none;">
-    ⚠️ Setup required: Run <code>npm run test-email</code> to load sample incidents
+    ⚠️ No incidents yet.
+    <button onclick="loadDemoData()" style="margin-left: 10px; padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📧 Load Demo Data</button>
   </div>
 
   <!-- Status Banner -->
@@ -1406,6 +1407,42 @@
         </div>
       `;
     }).join('');
+  }
+
+  // Load demo data for presentation
+  async function loadDemoData() {
+    console.log('[DEMO] Loading demo data...');
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '⏳ Loading...';
+
+    try {
+      const response = await fetch(`${API_BASE}/admin/seed-demo-data`, {method: 'POST'});
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('[DEMO] Success:', result.message);
+        btn.textContent = '✅ Loaded! Refreshing...';
+
+        // Reload incidents
+        setTimeout(() => {
+          loadIncidents();
+          updateStats();
+          document.getElementById('setupBanner').style.display = 'none';
+          btn.textContent = '📧 Load Demo Data';
+          btn.disabled = false;
+        }, 1000);
+      } else {
+        alert('Error loading demo data: ' + result.error);
+        btn.textContent = '📧 Load Demo Data';
+        btn.disabled = false;
+      }
+    } catch (error) {
+      console.error('[DEMO] Error:', error);
+      alert('Failed to load demo data: ' + error.message);
+      btn.textContent = '📧 Load Demo Data';
+      btn.disabled = false;
+    }
   }
 
   // Auto-refresh every 5 seconds
